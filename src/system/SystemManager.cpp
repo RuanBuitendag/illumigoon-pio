@@ -26,10 +26,7 @@ void SystemManager::begin() {
     mesh.begin();
     
     // lambda captures 'this' to access 'manager'
-    mesh.setOnAnimationChange([this](uint8_t index, uint32_t startTime) {
-        Serial.printf("Switching to animation %d at time %u\n", index, startTime);
-        manager.setCurrent(index);
-    });
+
 
     Serial.println("Init: OTA...");
     ota.begin();

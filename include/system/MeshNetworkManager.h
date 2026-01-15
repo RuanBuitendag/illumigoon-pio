@@ -42,7 +42,7 @@ struct MeshMessage {
 
 class MeshNetworkManager {
 public:
-    using AnimationChangeCallback = std::function<void(uint8_t index, uint32_t startTime)>;
+
 
     MeshNetworkManager(LedController& ledController);
 
@@ -55,7 +55,7 @@ public:
     // New: Get synchronized network time
     uint32_t getNetworkTime() const;
 
-    void setOnAnimationChange(AnimationChangeCallback cb);
+
 
     bool isMaster() const;
     bool isSlave() const;
@@ -74,7 +74,7 @@ private:
     bool receivedOK;
     
     int32_t timeOffset; // New
-    AnimationChangeCallback onAnimationChangeCb; // New
+
 
     uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 

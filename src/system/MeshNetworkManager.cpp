@@ -138,9 +138,7 @@ uint32_t MeshNetworkManager::getNetworkTime() const {
     return millis() + timeOffset;
 }
 
-void MeshNetworkManager::setOnAnimationChange(AnimationChangeCallback cb) {
-    onAnimationChangeCb = cb;
-}
+
 
 bool MeshNetworkManager::isMaster() const {
     return currentState == NodeState::MASTER;
@@ -270,9 +268,7 @@ void MeshNetworkManager::handleAnimationState(const MeshMessage& msg) {
             AnimationStatePayload payload;
             memcpy(&payload, msg.data, sizeof(AnimationStatePayload));
             
-            if (onAnimationChangeCb) {
-                onAnimationChangeCb(payload.animationIndex, payload.startTime);
-            }
+
         }
     }
 }
