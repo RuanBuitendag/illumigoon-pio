@@ -246,6 +246,7 @@ void MeshNetworkManager::sendTimeSync() {
     uint32_t now = millis();
     memcpy(msg.data, &now, sizeof(uint32_t));
     
+    Serial.printf("[TimeSync] Sending sync. Time: %lu\n", now);
     sendMessage(msg);
 }
 
@@ -260,6 +261,9 @@ void MeshNetworkManager::handleTimeSync(const MeshMessage& msg) {
         // Offset = Master - Local
         uint32_t localTime = millis();
         timeOffset = masterTime - localTime;
+        Serial.printf("[TimeSync] Synced with master %llX. Master: %lu, Local: %lu, Offset: %ld\n", msg.senderId, masterTime, localTime, timeOffset);
+    } else {
+        Serial.printf("[TimeSync] Ignored sync from non-master %llX (current master: %llX)\n", msg.senderId, masterId);
     }
 }
 
@@ -285,6 +289,8 @@ void MeshNetworkManager::handleHeartbeat(const MeshMessage& msg) {
                 Serial.print("Master detected: ");
                 Serial.println(String(masterId, HEX));
                 currentState = NodeState::SLAVE;
+            } else {
+                 // Serial.printf("[Heartbeat] Received from master %llX\n", msg.senderId);
             }
         }
         // Split brain: higher ID wins
@@ -371,7 +377,7 @@ void MeshNetworkManager::handleFrameData(const MeshMessage& msg) {
     }
 
     // Copy packet data
-    int offset = msg.packetIndex * 240;
+    int offset = msg.packetIndex * 230;
     memcpy(((uint8_t*)frameBuffer.leds) + offset, msg.data, msg.dataLength);
     frameBuffer.receivedPackets++;
     frameBuffer.lastPacketTime = now;

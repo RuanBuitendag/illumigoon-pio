@@ -49,7 +49,7 @@ void AnimationPresets::createAnimations(AnimationManager& manager) {
 
         // Breathing Animation (AHDSR)
     // Attack=2000ms, Hold=1000ms, Decay=0, Sustain=255, SusTime=0, Release=2000ms, Rest=1000ms
-    manager.add(new BreathingAnimation("Breathing", CRGB(255, 30, 0), 2000, 1000, 0, 255, 0, 2000, 0));
+    manager.add(new BreathingAnimation("Breathing", CRGB(255, 20, 0), 2000, 1000, 0, 255, 0, 2000, 0));
 
     // Fire Animations
     manager.add(new FireAnimation("Fire", HeatColors_p, 0.5f));           // Standard

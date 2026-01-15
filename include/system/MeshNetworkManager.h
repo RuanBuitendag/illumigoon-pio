@@ -25,19 +25,19 @@ enum class MessageType : uint8_t {
     ANIMATION_STATE = 8 // New
 };
 
-struct AnimationStatePayload {
+struct __attribute__((packed)) AnimationStatePayload {
     char animationName[32];
     uint32_t startTime;
 };
 
-struct MeshMessage {
+struct __attribute__((packed)) MeshMessage {
     MessageType type;
     uint64_t senderId;
     uint32_t sequenceNumber;
     uint8_t totalPackets;
     uint8_t packetIndex;
     uint8_t dataLength;
-    uint8_t data[240]; // 250 total - 10 bytes header = 240 for data
+    uint8_t data[230]; // 246 total - 16 bytes header = 230 for data
 };
 
 class MeshNetworkManager {

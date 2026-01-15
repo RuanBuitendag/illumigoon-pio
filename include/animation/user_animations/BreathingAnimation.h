@@ -32,10 +32,16 @@ public:
         int cyclePos = timeMs % totalCycle;
         uint8_t brightness = 0;
 
+        // Helper for easing: 0.0 -> 1.0 (InOutSine)
+        auto easeInOut = [](float t) -> float {
+            return 0.5f * (1.0f - cos(t * PI));
+        };
+
         if (cyclePos < attack) {
             // Attack: 0 -> 255
             if (attack > 0) {
-                brightness = (cyclePos * 255) / attack;
+                float t = (float)cyclePos / attack;
+                brightness = (uint8_t)(easeInOut(t) * 255.0f);
             } else {
                 brightness = 255;
             }
@@ -47,11 +53,11 @@ public:
         else if (cyclePos < (attack + hold + decay)) {
             // Decay: 255 -> SustainLevel
             int p = cyclePos - (attack + hold);
-            // Interpolate from 255 down to sustainLevel
             if (decay > 0) {
-                // p goes from 0 to decay
-                // want map(p, 0, decay, 255, sustainLevel)
-                brightness = map(p, 0, decay, 255, sustainLevel);
+                float t = (float)p / decay; // 0.0 to 1.0
+                // Interpolate 255 -> sustain
+                float val = 255.0f + (sustainLevel - 255.0f) * easeInOut(t);
+                brightness = (uint8_t)val;
             } else {
                 brightness = sustainLevel;
             }
@@ -64,9 +70,9 @@ public:
             // Release: SustainLevel -> 0
             int p = cyclePos - (attack + hold + decay + sustainTime);
             if (release > 0) {
-                // p goes from 0 to release
-                // want map(p, 0, release, sustainLevel, 0)
-                int val = map(p, 0, release, sustainLevel, 0);
+                float t = (float)p / release;
+                // Interpolate sustain -> 0
+                float val = sustainLevel + (0.0f - sustainLevel) * easeInOut(t);
                 brightness = (uint8_t)val;
             } else {
                 brightness = 0;
