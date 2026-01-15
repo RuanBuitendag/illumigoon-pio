@@ -26,7 +26,7 @@ enum class MessageType : uint8_t {
 };
 
 struct AnimationStatePayload {
-    uint8_t animationIndex;
+    char animationName[32];
     uint32_t startTime;
 };
 
@@ -43,14 +43,13 @@ struct MeshMessage {
 class MeshNetworkManager {
 public:
 
-
     MeshNetworkManager(LedController& ledController);
 
     void begin();
     void update();
 
     // New: Broadcast Animation State
-    void broadcastAnimationState(uint8_t index, uint32_t startTime);
+    void broadcastAnimationState(const char* name, uint32_t startTime);
 
     // New: Get synchronized network time
     uint32_t getNetworkTime() const;

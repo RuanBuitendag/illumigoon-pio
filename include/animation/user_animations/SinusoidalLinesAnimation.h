@@ -15,12 +15,14 @@ public:
         float phase;
     };
 
-    SinusoidalLinesAnimation(const std::vector<CRGB>& colours,
+    SinusoidalLinesAnimation(const std::string& name,
+                             const std::vector<CRGB>& colours,
                              int lineLength,
                              float minFreq,
                              float maxFreq,
                              CRGB bg = CRGB::Black)
-        : lineLength(lineLength),
+        : Animation(name),
+          lineLength(lineLength),
           minFrequency(minFreq),
           maxFrequency(maxFreq),
           background(bg)

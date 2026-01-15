@@ -3,7 +3,7 @@
 SystemManager::SystemManager()
     : ledController(NUM_LEDS),
       wifi(WIFI_SSID, WIFI_PASSWORD),
-      manager(ledController),
+      animation(ledController),
       ota(wifi, ledController, OTA_SERVER_URL),
       mesh(ledController),
       animationTaskHandle(NULL),
@@ -25,9 +25,6 @@ void SystemManager::begin() {
     Serial.println("Init: Mesh...");
     mesh.begin();
     
-    // lambda captures 'this' to access 'manager'
-
-
     Serial.println("Init: OTA...");
     ota.begin();
     
@@ -80,19 +77,15 @@ void SystemManager::animationTask() {
         uint32_t networkTime = mesh.getNetworkTime();
 
         if (mesh.isMaster()) {
-            uint32_t now = millis();
-
-            if (now - lastSwitchMs >= ANIMATION_SWITCH_INTERVAL_MS) {
-                lastSwitchMs = now;
-                manager.next();
-                
-                // Broadcast new state with current network time
-                mesh.broadcastAnimationState(manager.getCurrentIndex(), networkTime);
-            }
+            // Logic to switch animations based on external input or schedule would go here.
+            // For now, we stay on the current animation.
+            
+            // Periodically broadcast current state to sync new nodes? 
+            // Or just rely on state changes.
         }
 
         // All nodes render locally using synchronized network time
-        manager.update(networkTime / 10);
+        animation.update(networkTime / 10);
 
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }

@@ -6,6 +6,10 @@ SystemManager sysManager;
 
 void setup() {
     sysManager.begin();
+
+    sysManager.animation.getCurrentAnimation()->setParam("Line Length", 60); // Example parameter set
+    sysManager.animation.getCurrentAnimation()->setParam("Speed", 2); // Example parameter set
+    sysManager.animation.getCurrentAnimation()->setParam("Spacing", 45); // Example parameter set
 }
 
 void loop() {

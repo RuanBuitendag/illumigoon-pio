@@ -113,7 +113,7 @@ void MeshNetworkManager::update() {
 }
 
 // New: Broadcast Animation State
-void MeshNetworkManager::broadcastAnimationState(uint8_t index, uint32_t startTime) {
+void MeshNetworkManager::broadcastAnimationState(const char* name, uint32_t startTime) {
     if (currentState != NodeState::MASTER) return;
 
     MeshMessage msg;
@@ -125,7 +125,8 @@ void MeshNetworkManager::broadcastAnimationState(uint8_t index, uint32_t startTi
     msg.dataLength = sizeof(AnimationStatePayload);
     
     AnimationStatePayload payload;
-    payload.animationIndex = index;
+    strncpy(payload.animationName, name, 31);
+    payload.animationName[31] = '\0'; // Ensure null termination
     payload.startTime = startTime;
     
     memcpy(msg.data, &payload, sizeof(AnimationStatePayload));

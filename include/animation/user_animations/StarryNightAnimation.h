@@ -6,8 +6,8 @@
 
 class StarryNightAnimation : public Animation {
 public:
-    StarryNightAnimation(uint8_t numStars = 15, uint16_t seed = 0)
-        : numStars(numStars), seed(seed), stars(nullptr), initialized(false), speed(1.0f) {
+    StarryNightAnimation(const std::string& name, uint8_t numStars = 15, uint16_t seed = 0)
+        : Animation(name), numStars(numStars), seed(seed), stars(nullptr), initialized(false), speed(1.0f) {
         if (seed == 0) {
             this->seed = random(65535);
         }

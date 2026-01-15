@@ -15,26 +15,17 @@ public:
     ~AnimationManager();
 
     void add(Animation* anim);
-    void setCurrent(uint8_t index);
-    uint8_t getCurrentIndex() const;
-    void next();
+    void setAnimation(const std::string& name);
+    std::string getCurrentAnimationName() const;
     void update(uint32_t epoch);
-    size_t getAnimationCount() const;
+    std::vector<std::string> getAnimationNames() const;
     Animation* getCurrentAnimation();
+    Animation* getAnimation(const std::string& name);
 
 private:
     LedController& controller;
     std::vector<Animation*> animations;
-    uint8_t currentIndex;
-
-    // Resource storage
-    CRGBPalette16 coolFirePalette;
-    CRGBPalette16 warmFirePalette;
-    std::vector<CRGB> sinusoidalColors;
-    std::vector<CRGB> warmWhiteColors;
-
-    void initResources();
-    void createAnimations();
+    Animation* currentAnimation;
 };
 
 #endif

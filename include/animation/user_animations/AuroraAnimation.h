@@ -6,8 +6,8 @@
 
 class AuroraAnimation : public Animation {
 public:
-    AuroraAnimation(int seed = 0)
-        : seed(seed) {
+    AuroraAnimation(const std::string& name, int seed = 0)
+        : Animation(name), seed(seed) {
         if (seed == 0) {
             this->seed = random(65535);
         }

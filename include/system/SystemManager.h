@@ -15,6 +15,13 @@ public:
     void begin();
     void update();
 
+    // Components - Order is critical for dependency injection!
+    LedController ledController;
+    WiFiManager wifi;
+    AnimationManager animation;
+    OtaManager ota;
+    MeshNetworkManager mesh;
+
 private:
     // Static task entry points
     static void animationTaskTrampoline(void* parameter);
@@ -23,13 +30,6 @@ private:
     // Task implementations
     void animationTask();
     void meshTask();
-
-    // Components - Order is critical for dependency injection!
-    LedController ledController;
-    WiFiManager wifi;
-    AnimationManager manager;
-    OtaManager ota;
-    MeshNetworkManager mesh;
 
     // FreeRTOS Task Handles
     TaskHandle_t animationTaskHandle;

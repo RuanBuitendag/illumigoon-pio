@@ -6,8 +6,8 @@
 
 class FireAnimation : public Animation {
 public:
-    FireAnimation(CRGBPalette16 palette = HeatColors_p, float speed = 1.0f, uint8_t cooling = 55, uint8_t sparking = 120)
-        : palette(palette), speed(speed), cooling(cooling), sparking(sparking) {
+    FireAnimation(const std::string& name, CRGBPalette16 palette = HeatColors_p, float speed = 1.0f, uint8_t cooling = 55, uint8_t sparking = 120)
+        : Animation(name), palette(palette), speed(speed), cooling(cooling), sparking(sparking) {
             registerParameter("Speed", &this->speed);
             registerParameter("Cooling", &this->cooling);
             registerParameter("Sparking", &this->sparking);

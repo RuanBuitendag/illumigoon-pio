@@ -8,15 +8,29 @@
 
 class Animation {
 public:
-	Animation() {}
+    Animation(const std::string& name) : name(name) {}
 
 	virtual ~Animation() {}
 
 	virtual void render(uint32_t epoch, CRGB* leds, int numLeds) const = 0;
 
+    const std::string& getName() const {
+        return name;
+    }
+
     const std::vector<AnimationParameter>& getParameters() const {
         return parameters;
     }
+
+    bool setParam(const std::string& name, int value);
+    bool setParam(const std::string& name, float value);
+    bool setParam(const std::string& name, uint8_t value);
+    bool setParam(const std::string& name, bool value);
+    bool setParam(const std::string& name, CRGB value);
+    bool setParam(const std::string& name, CRGBPalette16 value);
+
+protected:
+    AnimationParameter* findParameter(const std::string& name);
 
 protected:
     void registerParameter(const char* name, int* value) {
@@ -44,6 +58,7 @@ protected:
     }
 
     std::vector<AnimationParameter> parameters;
+    std::string name;
 };
 
 #endif
