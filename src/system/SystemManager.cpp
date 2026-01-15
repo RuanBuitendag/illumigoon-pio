@@ -14,9 +14,15 @@ void SystemManager::begin() {
     Serial.begin(115200);
     Serial.println("=== Starting system (SystemManager) ===");
 
+    Serial.println("Init: LEDs...");
+    ledController.begin();
+    Serial.println("Init: LEDs done.");
+
+    Serial.println("Init: WiFi...");
     wifi.begin();
     delay(1000);
 
+    Serial.println("Init: Mesh...");
     mesh.begin();
     
     // lambda captures 'this' to access 'manager'
@@ -25,9 +31,10 @@ void SystemManager::begin() {
         manager.setCurrent(index);
     });
 
+    Serial.println("Init: OTA...");
     ota.begin();
-    ledController.begin();
-
+    
+    Serial.println("Init: Tasks...");
     // Start Tasks
     xTaskCreatePinnedToCore(
         animationTaskTrampoline,
@@ -48,6 +55,7 @@ void SystemManager::begin() {
         &meshTaskHandle,
         MESH_TASK_CORE
     );
+    Serial.println("Init: Tasks done.");
 }
 
 void SystemManager::update() {

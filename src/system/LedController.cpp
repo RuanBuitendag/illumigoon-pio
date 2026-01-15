@@ -4,7 +4,7 @@ LedController::LedController(int numLeds)
     : numLeds(numLeds), brightness(255), otaInProgress(false)
 {
     leds = new CRGB[numLeds];
-    mux = portMUX_INITIALIZER_UNLOCKED;
+    mutex = xSemaphoreCreateMutex();
 }
 
 CRGB* LedController::getLeds() const {
@@ -12,9 +12,11 @@ CRGB* LedController::getLeds() const {
 }
 
 void LedController::begin() {
+    Serial.println("  > LedController::begin");
     FastLED.addLeds<WS2812B, PIN, GRB>(leds, numLeds);
     FastLED.setBrightness(brightness);
     clear();
+    Serial.println("  > LedController::begin done");
 }
 
 void LedController::render() {
@@ -36,13 +38,17 @@ int LedController::getNumLeds() const {
 }
 
 void LedController::showProgress(float fraction) {
-    taskENTER_CRITICAL(&mux);
-    int ledsOn = fraction * numLeds;
-    for (int i = 0; i < numLeds; i++) {
-        leds[i] = i < ledsOn ? CRGB::Green : CRGB::Black;
+    // Only print occasionally or it floods serial
+    // Serial.printf("  > showProgress %.2f\n", fraction); 
+    
+    if (xSemaphoreTake(mutex, portMAX_DELAY)) {
+        int ledsOn = fraction * numLeds;
+        for (int i = 0; i < numLeds; i++) {
+            leds[i] = i < ledsOn ? CRGB::Green : CRGB::Black;
+        }
+        FastLED.show();
+        xSemaphoreGive(mutex);
     }
-    FastLED.show();
-    taskEXIT_CRITICAL(&mux);
 }
 
 bool LedController::isOtaInProgress() const {
@@ -50,9 +56,10 @@ bool LedController::isOtaInProgress() const {
 }
 
 void LedController::show() {
-    taskENTER_CRITICAL(&mux);
-    FastLED.show();
-    taskEXIT_CRITICAL(&mux);
+    if (xSemaphoreTake(mutex, portMAX_DELAY)) {
+        FastLED.show();
+        xSemaphoreGive(mutex);
+    }
 }
 
 void LedController::flashColor(CRGB color, int count, int intervalMs) {

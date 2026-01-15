@@ -26,7 +26,7 @@ private:
     const int numLeds;
     int brightness;
     CRGB* leds;
-    portMUX_TYPE mux;
+    SemaphoreHandle_t mutex;
     bool otaInProgress;
 };
 

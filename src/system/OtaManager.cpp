@@ -98,50 +98,109 @@ void OtaManager::checkForUpdates() {
     }
 }
 
+
 void OtaManager::performOTA(const char* version) {
     Serial.print("OTA: Downloading firmware ");
     Serial.println(version);
 
-    controller.setOtaMode(true);
-    controller.showProgress(1);
+    // Ensure previous connections are fully closed
+    delay(100);
 
-    HTTPClient fw;
+    controller.setOtaMode(true);
+    // Show minimal progress (1 pixel) to indicate "Connecting" state vs "Off"
+    controller.showProgress(0.01f);
+
+    HTTPClient fwClient;
     String fwUrl = String(serverUrl) + firmwareEndpoint + version;
     Serial.println(fwUrl);
 
-    fw.begin(fwUrl);
-    int httpCode = fw.GET();
+    fwClient.setConnectTimeout(10000); // 10s timeout
+    fwClient.setTimeout(10000);
+    
+    // Explicitly begin with WiFiClient if needed, but standard begin should handle it.
+    // Using begin(url) covers basic cases.
+    if (!fwClient.begin(fwUrl)) {
+        Serial.println("OTA: Connection failed to initialize");
+        controller.flashColor(CRGB::Red, 3);
+        controller.setOtaMode(false);
+        return;
+    }
+
+    int httpCode = fwClient.GET();
     if (httpCode != HTTP_CODE_OK) {
         Serial.print("OTA: Firmware download failed, HTTP ");
         Serial.println(httpCode);
         controller.flashColor(CRGB::Red, 3);
         controller.setOtaMode(false);
-        fw.end();
+        fwClient.end();
         return;
     }
 
-    int size = fw.getSize();
+    int totalLength = fwClient.getSize();
     Serial.print("OTA: Firmware size ");
-    Serial.println(size);
+    Serial.println(totalLength);
 
-    if (!Update.begin(size)) {
-        Serial.println("OTA: Not enough flash space");
+    if (totalLength <= 0) {
+        Serial.println("OTA: Invalid content length");
         controller.flashColor(CRGB::Red, 3);
         controller.setOtaMode(false);
-        fw.end();
+        fwClient.end();
         return;
     }
 
-    size_t written = Update.writeStream(*fw.getStreamPtr());
+    if (!Update.begin(totalLength)) {
+        Serial.print("OTA: Not enough flash space (");
+        Serial.print(totalLength);
+        Serial.println(")");
+        controller.flashColor(CRGB::Red, 3);
+        controller.setOtaMode(false);
+        fwClient.end();
+        return;
+    }
+
+    WiFiClient* stream = fwClient.getStreamPtr();
+    uint8_t buff[128] = { 0 };
+    size_t written = 0;
+    int lastPercent = -1;
+
+    while (fwClient.connected() && (written < totalLength)) {
+        size_t size = stream->available();
+        if (size) {
+            int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
+            size_t w = Update.write(buff, c);
+            if (w != c) {
+               Serial.println("OTA: Write failed!");
+               break; 
+            }
+            written += c;
+            
+            int percent = (written * 100) / totalLength;
+            if (percent > lastPercent) {
+                lastPercent = percent;
+                controller.showProgress((float)written / (float)totalLength);
+            }
+        }
+        delay(1); // Give other tasks a chance
+    }
+    
     Serial.print("OTA: Written ");
     Serial.println(written);
+
+    if (written != totalLength) {
+        Serial.println("OTA: Download ended early");
+        Update.end();
+        controller.flashColor(CRGB::Red, 3);
+        controller.setOtaMode(false);
+        fwClient.end();
+        return;
+    }
 
     if (!Update.end(true)) {
         Serial.print("OTA: Update failed, error ");
         Serial.println(Update.getError());
         controller.flashColor(CRGB::Red, 3);
         controller.setOtaMode(false);
-        fw.end();
+        fwClient.end();
         return;
     }
 
@@ -150,7 +209,7 @@ void OtaManager::performOTA(const char* version) {
     prefs.end();
 
     Serial.println("OTA: Update successful, rebooting...");
-    fw.end();
+    fwClient.end();
     
     controller.flashColor(CRGB::Green, 3);
     
