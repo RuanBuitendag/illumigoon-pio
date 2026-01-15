@@ -8,6 +8,7 @@
 #include "animation/user_animations/FireAnimation.h"
 #include "animation/user_animations/StarryNightAnimation.h"
 #include "animation/user_animations/SinusoidalLinesAnimation.h"
+#include "animation/user_animations/BreathingAnimation.h"
 // #include "animation/user_animations/FlowingLinesAnimation.h" // Seems exists but not used in original manager, verify if needed later?
 
 // Define internal resources locally
@@ -44,7 +45,11 @@ namespace {
 
 void AnimationPresets::createAnimations(AnimationManager& manager) {
     // Line Animation
-    manager.add(new LineAnimation("Line", 20, 90, CRGB(255, 30, 0), 10));
+    // manager.add(new LineAnimation("Line", 20, 90, CRGB(255, 30, 0), 10));
+
+        // Breathing Animation (AHDSR)
+    // Attack=2000ms, Hold=1000ms, Decay=0, Sustain=255, SusTime=0, Release=2000ms, Rest=1000ms
+    manager.add(new BreathingAnimation("Breathing", CRGB(255, 30, 0), 2000, 1000, 0, 255, 0, 2000, 0));
 
     // Fire Animations
     manager.add(new FireAnimation("Fire", HeatColors_p, 0.5f));           // Standard
@@ -61,4 +66,6 @@ void AnimationPresets::createAnimations(AnimationManager& manager) {
     manager.add(new SinusoidalLinesAnimation("Sinusoidal", sinusoidalColors, 10, 1.0f, 5.0f, CRGB(30,30,30)));
     manager.add(new SinusoidalLinesAnimation("SinusoidalDark", sinusoidalColors, 10, 1.0f, 5.0f)); // Dark variant (no bg?)
     manager.add(new SinusoidalLinesAnimation("SinusoidalWarm", warmWhiteColors, 40, 1.0f, 2.0f));
+
+
 }
