@@ -114,6 +114,8 @@ void OtaManager::performOTA(const char* version) {
     if (httpCode != HTTP_CODE_OK) {
         Serial.print("OTA: Firmware download failed, HTTP ");
         Serial.println(httpCode);
+        controller.flashColor(CRGB::Red, 3);
+        controller.setOtaMode(false);
         fw.end();
         return;
     }
@@ -124,6 +126,8 @@ void OtaManager::performOTA(const char* version) {
 
     if (!Update.begin(size)) {
         Serial.println("OTA: Not enough flash space");
+        controller.flashColor(CRGB::Red, 3);
+        controller.setOtaMode(false);
         fw.end();
         return;
     }
@@ -135,6 +139,8 @@ void OtaManager::performOTA(const char* version) {
     if (!Update.end(true)) {
         Serial.print("OTA: Update failed, error ");
         Serial.println(Update.getError());
+        controller.flashColor(CRGB::Red, 3);
+        controller.setOtaMode(false);
         fw.end();
         return;
     }
@@ -145,6 +151,9 @@ void OtaManager::performOTA(const char* version) {
 
     Serial.println("OTA: Update successful, rebooting...");
     fw.end();
+    
+    controller.flashColor(CRGB::Green, 3);
+    
     delay(500);
     controller.setOtaMode(false);
     ESP.restart();

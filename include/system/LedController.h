@@ -18,6 +18,7 @@ public:
     int getNumLeds() const;
     void showProgress(float fraction);
     bool isOtaInProgress() const;
+    void flashColor(CRGB color, int count = 3, int intervalMs = 250);
 
 private:
     void show();

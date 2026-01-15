@@ -54,3 +54,17 @@ void LedController::show() {
     FastLED.show();
     taskEXIT_CRITICAL(&mux);
 }
+
+void LedController::flashColor(CRGB color, int count, int intervalMs) {
+    for (int i = 0; i < count; i++) {
+        // ON
+        fill_solid(leds, numLeds, color);
+        show();
+        delay(intervalMs);
+        
+        // OFF
+        fill_solid(leds, numLeds, CRGB::Black);
+        show();
+        delay(intervalMs);
+    }
+}
