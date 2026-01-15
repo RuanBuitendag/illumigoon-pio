@@ -10,6 +10,7 @@
 #include "animation/user_animations/SinusoidalLinesAnimation.h"
 #include "animation/user_animations/BreathingAnimation.h"
 #include "animation/user_animations/AudioWaveAnimation.h"
+#include "animation/user_animations/KickReactionAnimation.h"
 // #include "animation/user_animations/FlowingLinesAnimation.h" // Seems exists but not used in original manager, verify if needed later?
 
 // Define internal resources locally
@@ -45,7 +46,9 @@ namespace {
 }
 
 void AnimationPresets::createAnimations(AnimationManager& manager) {
-    manager.add(new AudioWaveAnimation("Audio Wave"));
+    // manager.add(new AudioWaveAnimation("Audio Wave"));
+    manager.add(new KickReactionAnimation("Kick Reaction"));
+
 
 
     // Line Animation
