@@ -40,6 +40,18 @@ struct __attribute__((packed)) MeshMessage {
     uint8_t data[230]; // 246 total - 16 bytes header = 230 for data
 };
 
+struct __attribute__((packed)) PeerAnnouncementPayload {
+    uint32_t ip;
+    NodeState role;
+};
+
+struct PeerInfo {
+    uint64_t id;
+    uint32_t ip;
+    NodeState role;
+    unsigned long lastSeen;
+};
+
 class MeshNetworkManager {
 public:
 
@@ -101,8 +113,16 @@ private:
     void handleCoordinator(const MeshMessage& msg);
     void handleFrameData(const MeshMessage& msg);
     void handleShutdown(const MeshMessage& msg);
+    void handlePeerAnnouncement(const MeshMessage& msg);
     void startElection();
     void becomeCoordinator();
     void sendHeartbeat();
     void sendMessage(const MeshMessage& msg);
+    
+    // New: Peer Discovery
+    void sendPeerAnnouncement();
+    std::vector<PeerInfo> knownPeers;
+
+public: 
+    std::vector<PeerInfo> getPeers() const { return knownPeers; }
 };

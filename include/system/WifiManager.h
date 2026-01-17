@@ -18,4 +18,5 @@ private:
     const char* ssid;
     const char* password;
     bool connecting;
+    bool mdnsStarted;
 };

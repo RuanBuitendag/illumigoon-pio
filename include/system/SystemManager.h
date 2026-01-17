@@ -7,6 +7,7 @@
 #include "system/OtaManager.h"
 #include "system/MeshNetworkManager.h"
 #include "animation/AnimationManager.h"
+#include "system/WebManager.h"
 
 class SystemManager {
 public:
@@ -34,4 +35,6 @@ private:
     // FreeRTOS Task Handles
     TaskHandle_t animationTaskHandle;
     TaskHandle_t meshTaskHandle;
+
+    WebManager web;
 };

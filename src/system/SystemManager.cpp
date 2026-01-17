@@ -6,6 +6,7 @@ SystemManager::SystemManager()
       animation(ledController),
       ota(wifi, ledController, OTA_SERVER_URL),
       mesh(ledController),
+      web(animation, mesh),
       animationTaskHandle(NULL),
       meshTaskHandle(NULL)
 {}
@@ -25,6 +26,9 @@ void SystemManager::begin() {
     Serial.println("Init: Mesh...");
     mesh.begin();
     
+    Serial.println("Init: Web...");
+    web.begin();
+
     Serial.println("Init: OTA...");
     ota.begin();
     
@@ -55,6 +59,7 @@ void SystemManager::begin() {
 void SystemManager::update() {
     wifi.update();
     ota.update();
+    web.update();
     vTaskDelay(100 / portTICK_PERIOD_MS);
 }
 

@@ -110,6 +110,12 @@ void MeshNetworkManager::update() {
             }
             break;
     }
+    // Periodically announce self to mesh (every 5 seconds)
+    static unsigned long lastAnnouncement = 0;
+    if (millis() - lastAnnouncement > 5000) {
+        sendPeerAnnouncement();
+        lastAnnouncement = millis();
+    }
 }
 
 // New: Broadcast Animation State
@@ -227,6 +233,10 @@ void MeshNetworkManager::onReceive(const uint8_t* mac, const uint8_t* data, int 
 
         case MessageType::ANIMATION_STATE:
             handleAnimationState(msg);
+            break;
+
+        case MessageType::PEER_ANNOUNCEMENT:
+            handlePeerAnnouncement(msg);
             break;
 
         default:
@@ -454,5 +464,44 @@ void MeshNetworkManager::sendMessage(const MeshMessage& msg) {
     if (result != ESP_OK) {
         Serial.print("Send failed: ");
         Serial.println(result);
+    }
+}
+
+void MeshNetworkManager::sendPeerAnnouncement() {
+    MeshMessage msg;
+    msg.type = MessageType::PEER_ANNOUNCEMENT;
+    msg.senderId = myId;
+    msg.sequenceNumber = sequenceNumber++;
+    
+    PeerAnnouncementPayload payload;
+    payload.ip = (uint32_t)WiFi.localIP();
+    payload.role = currentState;
+
+    memcpy(msg.data, &payload, sizeof(PeerAnnouncementPayload));
+    msg.dataLength = sizeof(PeerAnnouncementPayload);
+    
+    sendMessage(msg);
+}
+
+void MeshNetworkManager::handlePeerAnnouncement(const MeshMessage& msg) {
+    if (msg.dataLength < sizeof(PeerAnnouncementPayload)) return;
+    
+    PeerAnnouncementPayload* payload = (PeerAnnouncementPayload*)msg.data;
+    
+    // Update or Add peer
+    bool found = false;
+    for (auto& peer : knownPeers) {
+        if (peer.id == msg.senderId) {
+            peer.ip = payload->ip;
+            peer.role = payload->role;
+            peer.lastSeen = millis();
+            found = true;
+            break;
+        }
+    }
+    
+    if (!found) {
+        knownPeers.push_back({msg.senderId, payload->ip, payload->role, millis()});
+        Serial.printf("New Peer Discovered: %016llX at IP %u\n", msg.senderId, payload->ip);
     }
 }
