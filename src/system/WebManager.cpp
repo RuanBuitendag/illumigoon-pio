@@ -90,6 +90,23 @@ void WebManager::setupRoutes() {
         }
     });
 
+    // API: Rename Preset
+    server.on("/api/renamePreset", HTTP_POST, [this](AsyncWebServerRequest *request) {}, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        StaticJsonDocument<256> doc;
+        DeserializationError error = deserializeJson(doc, data, len);
+        if (!error && doc.containsKey("oldName") && doc.containsKey("newName")) {
+            const char* oldName = doc["oldName"];
+            const char* newName = doc["newName"];
+            if (animManager.renamePreset(oldName, newName)) {
+                request->send(200, "application/json", "{\"status\":\"renamed\"}");
+            } else {
+                request->send(500, "application/json", "{\"error\":\"Rename failed\"}");
+            }
+        } else {
+            request->send(400, "application/json", "{\"error\":\"Invalid JSON or missing fields\"}");
+        }
+    });
+
     // API: Delete Preset
     server.on("/api/deletePreset", HTTP_POST, [this](AsyncWebServerRequest *request) {}, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
         StaticJsonDocument<200> doc;

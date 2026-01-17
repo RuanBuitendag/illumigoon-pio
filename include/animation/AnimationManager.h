@@ -24,6 +24,7 @@ public:
     // Preset Management
     void loadPresets(); // Load from LittleFS
     bool savePreset(const std::string& name, const std::string& baseType); // Save current params as new preset
+    bool renamePreset(const std::string& oldName, const std::string& newName);
     bool deletePreset(const std::string& name);
 
     void setAnimation(const std::string& presetName); // Select a PRESET

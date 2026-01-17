@@ -118,6 +118,58 @@ bool AnimationManager::savePreset(const std::string& name, const std::string& ba
     return true;
 }
 
+bool AnimationManager::renamePreset(const std::string& oldName, const std::string& newName) {
+    // 1. Check if new name already exists
+    for (const auto& p : presets) {
+        if (p.name == newName) return false;
+    }
+
+    // 2. Find old preset
+    auto it = std::find_if(presets.begin(), presets.end(), [&](const Preset& p){ return p.name == oldName; });
+    if (it == presets.end()) return false;
+
+    const Preset& oldPreset = *it;
+
+    // 3. Update file content and path
+    std::string newPath = "/presets/" + newName + ".json";
+    
+    File fRead = LittleFS.open(oldPreset.filePath.c_str(), FILE_READ);
+    if (!fRead) return false;
+    
+    DynamicJsonDocument doc(2048);
+    DeserializationError error = deserializeJson(doc, fRead);
+    fRead.close();
+    
+    if (error) return false;
+    
+    doc["name"] = newName;
+    
+    File fWrite = LittleFS.open(newPath.c_str(), FILE_WRITE);
+    if (!fWrite) return false;
+    
+    if (serializeJson(doc, fWrite) == 0) {
+        fWrite.close();
+        LittleFS.remove(newPath.c_str()); // cleanup
+        return false;
+    }
+    fWrite.close();
+    
+    // 4. Delete old file
+    LittleFS.remove(oldPreset.filePath.c_str());
+    
+    // 5. Keep current selection if we just renamed the current preset
+    bool wasCurrent = (currentPresetName == oldName);
+
+    // 6. Reload presets to update list
+    loadPresets(); 
+    
+    if (wasCurrent) {
+        currentPresetName = newName;
+    }
+    
+    return true;
+}
+
 bool AnimationManager::deletePreset(const std::string& name) {
     for (const auto& p : presets) {
         if (p.name == name) {
