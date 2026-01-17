@@ -13,7 +13,7 @@ public:
         }
         
         stars = new Star[numStars];
-        registerParameter("Speed", &this->speed);
+        registerParameter("Speed", &this->speed, 0.0f, 5.0f, 0.01f, "Twinkle speed");
     }
 
     ~StarryNightAnimation() {

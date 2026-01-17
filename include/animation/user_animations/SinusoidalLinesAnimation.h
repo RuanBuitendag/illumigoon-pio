@@ -27,18 +27,21 @@ public:
           maxFrequency(maxFreq),
           background(bg)
     {
-        registerParameter("Line Length", &this->lineLength);
-        registerParameter("Background", &this->background);
-        for (const auto& c : colours) {
-            Line line;
-            line.colour = c;
-            line.frequency = randomFloat(minFrequency, maxFrequency);
-            line.phase = randomFloat(0.0f, 2.0f * M_PI);
-            lines.push_back(line);
-        }
+        // Initialize palette from constructor colors
+        palette.colors = colours;
+        
+        registerParameter("Line Length", &this->lineLength, 0, 90, 1, "Wave segment length");
+        registerParameter("Background", &this->background, "Background color");
+        registerParameter("Palette", &this->palette, "Line colors");
+
+        // Initial population
+        syncLines();
     }
 
     void render(uint32_t epoch, CRGB* leds, int numLeds) const override {
+        // Sync lines with palette state (which might have been updated by WebManager)
+        syncLines();
+
         for (int i = 0; i < numLeds; i++) {
             leds[i] = background;
         }
@@ -71,10 +74,39 @@ public:
     }
 
 private:
-    std::vector<Line> lines;
+    void syncLines() const {
+        // Handle size mismatch (Add/Remove)
+        if (lines.size() != palette.colors.size()) {
+            if (lines.size() < palette.colors.size()) {
+                // Add new lines
+                size_t needed = palette.colors.size() - lines.size();
+                // Since this method is const, use const_cast only if strictly necessary or just trust mutable.
+                // lines is mutable, so we can modify it in const function.
+                for (size_t i = 0; i < needed; i++) {
+                    Line line;
+                    // randomFloat is static, so ok.
+                    line.frequency = randomFloat(minFrequency, maxFrequency);
+                    line.phase = randomFloat(0.0f, 2.0f * M_PI);
+                    // Color set below
+                    lines.push_back(line);
+                }
+            } else {
+                // Remove excess
+                lines.resize(palette.colors.size());
+            }
+        }
+
+        // Update colors from palette
+        for (size_t i = 0; i < lines.size(); i++) {
+            lines[i].colour = palette.colors[i];
+        }
+    }
+
+    mutable std::vector<Line> lines;
     int lineLength;
     float minFrequency, maxFrequency;
     CRGB background;
+    DynamicPalette palette;
 
     static float randomFloat(float minVal, float maxVal) {
         return minVal + (float)rand() / (float)RAND_MAX * (maxVal - minVal);

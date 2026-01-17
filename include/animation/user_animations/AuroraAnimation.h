@@ -11,7 +11,7 @@ public:
         if (seed == 0) {
             this->seed = random(65535);
         }
-        registerParameter("Seed", &this->seed);
+        registerParameter("Seed", &this->seed, 0, 65535, 1, "Pattern random seed");
     }
 
     void render(uint32_t epoch, CRGB* leds, int numLeds) const override {

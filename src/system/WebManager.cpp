@@ -124,17 +124,70 @@ void WebManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
         if (strcmp(cmd, "setParam") == 0) {
             const char* name = doc["name"];
             Animation* current = animManager.getCurrentAnimation();
+            bool changed = false;
+
             if (current) {
                // Type handling based on JSON value type
-               if (doc["value"].is<int>()) current->setParam(name, doc["value"].as<int>());
-               else if (doc["value"].is<float>()) current->setParam(name, doc["value"].as<float>());
-               else if (doc["value"].is<bool>()) current->setParam(name, doc["value"].as<bool>());
-               // Color handling usually needs parsing from string/object, simplified here
+               if (doc["value"].is<int>()) {
+                   current->setParam(name, doc["value"].as<int>());
+                   changed = true;
+               }
+               else if (doc["value"].is<float>()) {
+                   current->setParam(name, doc["value"].as<float>());
+                   changed = true;
+               }
+               else if (doc["value"].is<bool>()) {
+                   current->setParam(name, doc["value"].as<bool>());
+                   changed = true;
+               }
+               else if (doc["value"].is<const char*>()) {
+                   const char* val = doc["value"];
+                   // Simple hex parser #RRGGBB
+                   if (val[0] == '#' && strlen(val) == 7) {
+                       int r, g, b;
+                       if (sscanf(val + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+                           current->setParam(name, CRGB(r, g, b));
+                           changed = true;
+                       }
+                   }
+               }
+                else if (doc["value"].is<JsonArray>()) {
+                   // Handle Dynamic Palette
+                   JsonArray arr = doc["value"];
+                   if (current->findParameter(name)->type == PARAM_DYNAMIC_PALETTE) {
+                       DynamicPalette newPal;
+                       for (JsonVariant v : arr) {
+                           const char* val = v.as<const char*>();
+                           if (val && val[0] == '#' && strlen(val) == 7) {
+                               int r, g, b;
+                               if (sscanf(val + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+                                   newPal.colors.push_back(CRGB(r, g, b));
+                               }
+                           }
+                       }
+                       // Ensure at least one color exists?
+                       if (newPal.colors.empty()) newPal.colors.push_back(CRGB::Black);
+
+                       current->setParam(name, newPal);
+                       changed = true;
+                   }
+               }
+               
+               if (changed) {
+                   // Broadcast new params to all connected clients
+                   ws.textAll("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
+               }
             }
         } else if (strcmp(cmd, "setAnimation") == 0) {
              const char* name = doc["name"];
              animManager.setAnimation(name);
              ws.textAll("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
+        } else if (strcmp(cmd, "reboot") == 0) {
+             ESP.restart();
+        } else if (strcmp(cmd, "setPower") == 0) {
+             bool p = doc["value"];
+             animManager.setPower(p);
+             ws.textAll("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
         }
     }
 }
@@ -144,6 +197,7 @@ String WebManager::getSystemStatusJson() {
     doc["uptime"] = millis();
     doc["heap"] = ESP.getFreeHeap();
     doc["animation"] = animManager.getCurrentAnimationName();
+    doc["power"] = animManager.getPower();
     doc["ip"] = WiFi.localIP().toString();
     String output;
     serializeJson(doc, output);
@@ -170,6 +224,7 @@ String WebManager::getParamsJson() {
         for (const auto& param : current->getParameters()) {
             JsonObject obj = arr.createNestedObject();
             obj["name"] = param.name;
+            obj["description"] = param.description;
             obj["type"] = (int)param.type;
             
             // Metadata
@@ -189,6 +244,14 @@ String WebManager::getParamsJson() {
                     CRGB c = *(CRGB*)param.value; 
                     char hex[8]; sprintf(hex, "#%02X%02X%02X", c.r, c.g, c.b);
                     obj["value"] = hex;
+                } break;
+                case PARAM_DYNAMIC_PALETTE: {
+                    DynamicPalette* pal = (DynamicPalette*)param.value;
+                    JsonArray palArr = obj.createNestedArray("value");
+                    for (const auto& c : pal->colors) {
+                        char hex[8]; sprintf(hex, "#%02X%02X%02X", c.r, c.g, c.b);
+                        palArr.add(hex);
+                    }
                 } break;
                 default: break;
             }

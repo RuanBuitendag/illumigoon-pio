@@ -12,14 +12,14 @@ public:
           attack(attack), hold(hold), decay(decay), sustainLevel(sustainLevel), 
           sustainTime(sustainTime), release(release), rest(rest)
     {
-        registerParameter("Colour", &this->colour);
-        registerParameter("Attack", &this->attack);
-        registerParameter("Hold", &this->hold);
-        registerParameter("Decay", &this->decay);
-        registerParameter("Sustain Lvl", &this->sustainLevel);
-        registerParameter("Sustain T", &this->sustainTime);
-        registerParameter("Release", &this->release);
-        registerParameter("Rest", &this->rest);
+        registerParameter("Colour", &this->colour, "Main color");
+        registerParameter("Attack", &this->attack, 0, 5000, 1, "Fade-in duration (ms)");
+        registerParameter("Hold", &this->hold, 0, 5000, 1, "Max brightness duration (ms)");
+        registerParameter("Decay", &this->decay, 0, 5000, 1, "Fade to sustain duration (ms)");
+        registerParameter("Sustain Lvl", &this->sustainLevel, 0, 255, 1, "Brightness level during sustain");
+        registerParameter("Sustain T", &this->sustainTime, 0, 5000, 1, "Sustain duration (ms)");
+        registerParameter("Release", &this->release, 0, 5000, 1, "Fade-out duration (ms)");
+        registerParameter("Rest", &this->rest, 0, 5000, 1, "Off duration (ms)");
     }
 
     void render(uint32_t epoch, CRGB* leds, int numLeds) const override {

@@ -22,10 +22,14 @@ public:
     Animation* getCurrentAnimation();
     Animation* getAnimation(const std::string& name);
 
+    void setPower(bool on);
+    bool getPower() const;
+
 private:
     LedController& controller;
     std::vector<Animation*> animations;
     Animation* currentAnimation;
+    bool powerState;
 };
 
 #endif

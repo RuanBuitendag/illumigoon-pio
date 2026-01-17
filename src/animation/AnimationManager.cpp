@@ -1,7 +1,7 @@
 #include "animation/AnimationManager.h"
 #include "animation/AnimationPresets.h"
 
-AnimationManager::AnimationManager(LedController& ctrl) : controller(ctrl), currentAnimation(nullptr) {
+AnimationManager::AnimationManager(LedController& ctrl) : controller(ctrl), currentAnimation(nullptr), powerState(true) {
     AnimationPresets::createAnimations(*this);
 }
 
@@ -45,9 +45,21 @@ std::vector<std::string> AnimationManager::getAnimationNames() const {
 
 void AnimationManager::update(uint32_t epoch) {
     if (currentAnimation && !controller.isOtaInProgress()) {
-        currentAnimation->render(epoch, controller.getLeds(), controller.getNumLeds());
-        controller.render();
+        if (powerState) {
+            currentAnimation->render(epoch, controller.getLeds(), controller.getNumLeds());
+            controller.render();
+        } else {
+            controller.clear();
+        }
     }
+}
+
+void AnimationManager::setPower(bool on) {
+    powerState = on;
+}
+
+bool AnimationManager::getPower() const {
+    return powerState;
 }
 
 Animation* AnimationManager::getCurrentAnimation() {
