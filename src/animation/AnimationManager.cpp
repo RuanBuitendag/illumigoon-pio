@@ -1,47 +1,199 @@
 #include "animation/AnimationManager.h"
 #include "animation/AnimationPresets.h"
+#include <LittleFS.h>
+#include <ArduinoJson.h>
 
 AnimationManager::AnimationManager(LedController& ctrl) : controller(ctrl), currentAnimation(nullptr), powerState(true) {
+    if (!LittleFS.begin(true)) {
+        // Serial.println("LittleFS Mount Failed");
+        // Handle error?
+    }
+    
+    // Create directory if not exists
+    if (!LittleFS.exists("/presets")) {
+        LittleFS.mkdir("/presets");
+    }
+
     AnimationPresets::createAnimations(*this);
+    loadPresets();
+    
+    // If we have presets, select the first one?
+    // Or maybe restore last used?
+    if (!presets.empty()) {
+        setAnimation(presets[0].name);
+    }
 }
 
 AnimationManager::~AnimationManager() {
-    for (Animation* anim : animations) {
-        delete anim;
+    for (auto const& kv : baseAnimations) {
+        delete kv.second;
     }
-    animations.clear();
+    baseAnimations.clear();
 }
 
-void AnimationManager::add(Animation* anim) {
-    animations.push_back(anim);
-    if (currentAnimation == nullptr) {
-        currentAnimation = anim;
+
+void AnimationManager::registerBaseAnimation(Animation* anim) {
+    if (anim) {
+        baseAnimations[anim->getTypeName()] = anim;
     }
+}
+
+void AnimationManager::loadPresets() {
+    presets.clear();
+    
+    File dir = LittleFS.open("/presets");
+    if (!dir || !dir.isDirectory()) {
+        // create defaults if empty? handled in AnimationPresets maybe?
+        return;
+    }
+
+    File file = dir.openNextFile();
+    while (file) {
+        if (!file.isDirectory()) {
+            // Check extension .json
+            std::string path = file.path(); // e.g. /presets/CoolFire.json (Note: LittleFS might differ on path format)
+            if (String(file.name()).endsWith(".json")) {
+                // Read metadata
+                // We need to open it to get the name and baseType?
+                // Or assume filename is the name? 
+                // Better to read the file content to be robust.
+                
+                // For efficiency, maybe just rely on filename = name? 
+                // Let's iterate and parse to get BaseType and Name.
+                
+                // Re-open file to read from start if needed, but file is already open handle?
+                // `file` from openNextFile is a handle.
+                
+                // Let's read the whole file
+                // size check
+                if (file.size() < 4096) {
+                     StaticJsonDocument<2048> doc;
+                     DeserializationError error = deserializeJson(doc, file);
+                     if (!error) {
+                         const char* name = doc["name"];
+                         const char* baseType = doc["baseType"];
+                         if (name && baseType) {
+                             Preset p;
+                             p.name = name;
+                             p.baseType = baseType;
+                             p.filePath = (String("/presets/") + file.name()).c_str();
+                             presets.push_back(p);
+                         }
+                     }
+                }
+            }
+        }
+        file = dir.openNextFile();
+    }
+}
+
+bool AnimationManager::savePreset(const std::string& name, const std::string& baseType) {
+    // Check if base animation exists
+    if (baseAnimations.find(baseType) == baseAnimations.end()) return false;
+    
+    Animation* anim = baseAnimations[baseType];
+    
+    // Construct Path
+    std::string filename = name; 
+    std::string path = "/presets/" + filename + ".json";
+    
+    File file = LittleFS.open(path.c_str(), FILE_WRITE);
+    if (!file) return false;
+    
+    DynamicJsonDocument doc(2048);
+    doc["name"] = name;
+    doc["baseType"] = baseType;
+    
+    JsonObject params = doc.createNestedObject("params");
+    anim->serializeParameters(params);
+    
+    if (serializeJson(doc, file) == 0) {
+        file.close();
+        return false;
+    }
+    file.close();
+    
+    // Reload presets to update list
+    loadPresets(); 
+    return true;
+}
+
+bool AnimationManager::deletePreset(const std::string& name) {
+    for (const auto& p : presets) {
+        if (p.name == name) {
+            LittleFS.remove(p.filePath.c_str());
+            loadPresets();
+            return true;
+        }
+    }
+    return false;
 }
 
 void AnimationManager::setAnimation(const std::string& name) {
-    for (Animation* anim : animations) {
-        if (anim->getName() == name) {
-            currentAnimation = anim;
-            return;
+    // 1. Try to find as Preset
+    const Preset* targetPreset = nullptr;
+    for (const auto& p : presets) {
+        if (p.name == name) {
+            targetPreset = &p;
+            break;
         }
     }
+    
+    if (targetPreset) {
+        // Find base animation
+        auto it = baseAnimations.find(targetPreset->baseType);
+        if (it == baseAnimations.end()) return;
+        
+        Animation* anim = it->second;
+        
+        // Load parameters from file
+        File file = LittleFS.open(targetPreset->filePath.c_str(), FILE_READ);
+        if (file) {
+            DynamicJsonDocument doc(2048);
+            deserializeJson(doc, file);
+            file.close();
+            
+            if (doc.containsKey("params")) {
+                JsonObject params = doc["params"];
+                anim->deserializeParameters(params);
+            }
+        }
+        
+        currentAnimation = anim;
+        currentPresetName = name;
+        return;
+    }
+    
+    // 2. Try to find as Base Animation
+    auto it = baseAnimations.find(name);
+    if (it != baseAnimations.end()) {
+         currentAnimation = it->second;
+         currentPresetName = name; // Treat base name as the current "preset" name
+         return;
+    }
 }
+
 
 std::string AnimationManager::getCurrentAnimationName() const {
-    if (currentAnimation) {
-        return currentAnimation->getName();
-    }
-    return "";
+    return currentPresetName;
 }
 
-std::vector<std::string> AnimationManager::getAnimationNames() const {
+std::vector<std::string> AnimationManager::getPresetNames() const {
     std::vector<std::string> names;
-    for (const auto& anim : animations) {
-        names.push_back(anim->getName());
+    for (const auto& p : presets) {
+        names.push_back(p.name);
     }
     return names;
 }
+
+std::vector<std::string> AnimationManager::getBaseAnimationNames() const {
+    std::vector<std::string> names;
+    for (auto const& kv : baseAnimations) {
+        names.push_back(kv.first);
+    }
+    return names;
+}
+
 
 void AnimationManager::update(uint32_t epoch) {
     if (currentAnimation && !controller.isOtaInProgress()) {
@@ -66,11 +218,10 @@ Animation* AnimationManager::getCurrentAnimation() {
      return currentAnimation;
 }
 
-Animation* AnimationManager::getAnimation(const std::string& name) {
-    for (Animation* anim : animations) {
-        if (anim->getName() == name) {
-            return anim;
-        }
+Animation* AnimationManager::getBaseAnimation(const std::string& typeName) {
+    auto it = baseAnimations.find(typeName);
+    if (it != baseAnimations.end()) {
+        return it->second;
     }
     return nullptr;
 }

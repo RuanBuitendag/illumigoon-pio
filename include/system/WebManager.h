@@ -27,7 +27,10 @@ private:
 
     // Helpers
     String getSystemStatusJson();
-    String getAnimationsJson();
+    String getAnimationsJson(); // Presets
+    String getBaseAnimationsJson();
     String getParamsJson();
+
+
     String getPeersJson();
 };

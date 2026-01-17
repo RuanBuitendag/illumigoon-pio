@@ -16,7 +16,10 @@ public:
         registerParameter("Speed", &this->speed, 0.0f, 5.0f, 0.01f, "Twinkle speed");
     }
 
+    std::string getTypeName() const override { return "StarryNight"; }
+
     ~StarryNightAnimation() {
+
         delete[] stars;
     }
 

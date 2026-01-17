@@ -11,9 +11,10 @@ public:
         
         // Attack/Decay config
         // Quick attack, relatively quick release for punchy effect
-        attackRate = 0.2f;  // Per frame increase
         decayRate = 0.05f;  // Per frame decrease
     }
+
+    std::string getTypeName() const override { return "KickReaction"; }
 
 protected:
     void renderAudioAnimation(uint32_t epoch, CRGB* leds, int numLeds) const override {

@@ -91,3 +91,95 @@ bool Animation::setParam(const std::string& paramName, const DynamicPalette& val
     }
     return false;
 }
+
+void Animation::serializeParameters(JsonObject& doc) const {
+    for (const auto& param : parameters) {
+        switch (param.type) {
+            case PARAM_INT:
+                doc[param.name] = *(int*)param.value;
+                break;
+            case PARAM_FLOAT:
+                doc[param.name] = *(float*)param.value;
+                break;
+            case PARAM_BYTE:
+                doc[param.name] = *(uint8_t*)param.value;
+                break;
+            case PARAM_BOOL:
+                doc[param.name] = *(bool*)param.value;
+                break;
+            case PARAM_COLOR: {
+                CRGB c = *(CRGB*)param.value;
+                // Store as hex int 0xRRGGBB
+                uint32_t val = ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+                doc[param.name] = val;
+                break;
+            }
+            case PARAM_DYNAMIC_PALETTE: {
+                DynamicPalette* pal = (DynamicPalette*)param.value;
+                JsonArray arr = doc.createNestedArray(param.name);
+                for (const auto& c : pal->colors) {
+                    uint32_t val = ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+                    arr.add(val);
+                }
+                break;
+            }
+        }
+    }
+}
+
+bool Animation::deserializeParameters(const JsonObject& doc) {
+    bool changed = false;
+    for (JsonPair p : doc) {
+        AnimationParameter* param = findParameter(p.key().c_str());
+        if (!param) continue;
+
+        switch (param->type) {
+            case PARAM_INT:
+                if (p.value().is<int>()) {
+                    *(int*)param->value = p.value().as<int>();
+                    changed = true;
+                }
+                break;
+            case PARAM_FLOAT:
+                if (p.value().is<float>()) {
+                    *(float*)param->value = p.value().as<float>();
+                    changed = true;
+                }
+                break;
+            case PARAM_BYTE:
+                if (p.value().is<uint8_t>()) {
+                    *(uint8_t*)param->value = p.value().as<uint8_t>();
+                    changed = true;
+                }
+                break;
+            case PARAM_BOOL:
+                if (p.value().is<bool>()) {
+                    *(bool*)param->value = p.value().as<bool>();
+                    changed = true;
+                }
+                break;
+            case PARAM_COLOR:
+                if (p.value().is<uint32_t>()) {
+                    uint32_t val = p.value().as<uint32_t>();
+                    *(CRGB*)param->value = CRGB(val);
+                    changed = true;
+                }
+                break;
+            case PARAM_DYNAMIC_PALETTE:
+                if (p.value().is<JsonArray>()) {
+                    DynamicPalette* pal = (DynamicPalette*)param->value;
+                    pal->colors.clear();
+                    JsonArray arr = p.value().as<JsonArray>();
+                    for (JsonVariant v : arr) {
+                        if (v.is<uint32_t>()) {
+                            pal->colors.push_back(CRGB(v.as<uint32_t>()));
+                        }
+                    }
+                    changed = true;
+                }
+                break;
+        }
+    }
+    return changed;
+}
+

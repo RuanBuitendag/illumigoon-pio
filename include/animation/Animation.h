@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <vector>
 #include "animation/AnimationParameter.h"
+#include <ArduinoJson.h>
+
 
 class Animation {
 public:
@@ -58,6 +60,14 @@ protected:
 
     std::vector<AnimationParameter> parameters;
     std::string name;
+
+public:
+    virtual std::string getTypeName() const = 0;
+
+    // Serialization
+    void serializeParameters(JsonObject& doc) const; // Use JsonObject to append
+    bool deserializeParameters(const JsonObject& doc);
 };
+
 
 #endif

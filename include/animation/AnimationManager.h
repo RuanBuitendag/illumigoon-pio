@@ -2,6 +2,10 @@
 #define ANIMATIONMANAGER_H
 
 #include <vector>
+#include <map>
+#include <string>
+#include <ArduinoJson.h>
+
 #include <cstdint>
 #include "animation/Animation.h"
 #include "system/LedController.h"
@@ -14,22 +18,48 @@ public:
     AnimationManager(LedController& ctrl);
     ~AnimationManager();
 
-    void add(Animation* anim);
-    void setAnimation(const std::string& name);
-    std::string getCurrentAnimationName() const;
+    // Register a singleton base animation (e.g. "Fire", "Wave")
+    void registerBaseAnimation(Animation* anim);
+
+    // Preset Management
+    void loadPresets(); // Load from LittleFS
+    bool savePreset(const std::string& name, const std::string& baseType); // Save current params as new preset
+    bool deletePreset(const std::string& name);
+
+    void setAnimation(const std::string& presetName); // Select a PRESET
+    std::string getCurrentAnimationName() const; // Returns PRESET name
+    
     void update(uint32_t epoch);
-    std::vector<std::string> getAnimationNames() const;
+    
+    std::vector<std::string> getPresetNames() const;
+    std::vector<std::string> getBaseAnimationNames() const;
+
     Animation* getCurrentAnimation();
-    Animation* getAnimation(const std::string& name);
+    
+    // Helper to get access to specific base animation for configuration if needed
+    Animation* getBaseAnimation(const std::string& typeName);
 
     void setPower(bool on);
     bool getPower() const;
 
 private:
     LedController& controller;
-    std::vector<Animation*> animations;
-    Animation* currentAnimation;
+
+    // Map of BaseType -> Instance (e.g. "Fire" -> FireAnimation*)
+    std::map<std::string, Animation*> baseAnimations;
+
+    struct Preset {
+        std::string name;
+        std::string baseType;
+        std::string filePath; // e.g. /presets/my_cool_fire.json
+    };
+    std::vector<Preset> presets;
+
+    Animation* currentAnimation; // Pointer to one of the baseAnimations
+    std::string currentPresetName;
+
     bool powerState;
 };
+
 
 #endif

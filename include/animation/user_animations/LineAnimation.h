@@ -15,7 +15,10 @@ public:
         registerParameter("Speed", &this->speed, 0, 100, 1, "Animation speed multiplier");
     }
 
+    std::string getTypeName() const override { return "Line"; }
+
     void render(uint32_t epoch, CRGB* leds, int numLeds) const override {
+
         // Use a clearer cycle length
         int cycle = lineLength + spacing;
         if (cycle == 0) cycle = 1; // Prevent divide by zero

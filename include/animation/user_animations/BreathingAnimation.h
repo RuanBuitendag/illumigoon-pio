@@ -22,7 +22,10 @@ public:
         registerParameter("Rest", &this->rest, 0, 5000, 1, "Off duration (ms)");
     }
 
+    std::string getTypeName() const override { return "Breathing"; }
+
     void render(uint32_t epoch, CRGB* leds, int numLeds) const override {
+
         // epoch is 10ms ticks
         uint32_t timeMs = epoch * 10;
         

@@ -16,6 +16,8 @@ public:
         releaseFactor = (1000000.0f / releaseTime) / SAMPLING_FREQ;
     }
 
+    std::string getTypeName() const override { return "AudioWave"; }
+
 protected:
     void renderAudioAnimation(uint32_t epoch, CRGB* leds, int numLeds) const override {
         // cast away constness to update internal state specific to this animation

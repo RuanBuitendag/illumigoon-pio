@@ -35,9 +35,14 @@ void WebManager::setupRoutes() {
         request->send(200, "application/json", getSystemStatusJson());
     });
 
-    // API: Animations List
+    // API: Animations List (Presets)
     server.on("/api/animations", HTTP_GET, [this](AsyncWebServerRequest *request) {
         request->send(200, "application/json", getAnimationsJson());
+    });
+
+    // API: Base Animations List
+    server.on("/api/baseAnimations", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", getBaseAnimationsJson());
     });
 
     // API: Current Animation Params
@@ -61,6 +66,43 @@ void WebManager::setupRoutes() {
                 // Broadcast new params to WS clients
                 ws.textAll("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
             }
+        }
+    });
+
+    // API: Save Preset
+    server.on("/api/savePreset", HTTP_POST, [this](AsyncWebServerRequest *request) {}, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        StaticJsonDocument<512> doc;
+        DeserializationError error = deserializeJson(doc, data, len);
+        if (!error) {
+            const char* name = doc["name"];
+            const char* baseType = doc["baseType"];
+            if (name && baseType) {
+                if (animManager.savePreset(name, baseType)) {
+                    request->send(200, "application/json", "{\"status\":\"saved\"}");
+                } else {
+                    request->send(500, "application/json", "{\"error\":\"Save failed\"}");
+                }
+            } else {
+                request->send(400, "application/json", "{\"error\":\"Missing name or baseType\"}");
+            }
+        } else {
+            request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        }
+    });
+
+    // API: Delete Preset
+    server.on("/api/deletePreset", HTTP_POST, [this](AsyncWebServerRequest *request) {}, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        StaticJsonDocument<200> doc;
+        DeserializationError error = deserializeJson(doc, data, len);
+        if (!error && doc.containsKey("name")) {
+            const char* name = doc["name"];
+            if (animManager.deletePreset(name)) {
+                request->send(200, "application/json", "{\"status\":\"deleted\"}");
+            } else {
+                request->send(500, "application/json", "{\"error\":\"Delete failed\"}");
+            }
+        } else {
+            request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
         }
     });
 
@@ -205,8 +247,20 @@ String WebManager::getSystemStatusJson() {
 }
 
 String WebManager::getAnimationsJson() {
+    StaticJsonDocument<2048> doc; // Increased size for potentially many presets
+    std::vector<std::string> names = animManager.getPresetNames();
+    JsonArray arr = doc.to<JsonArray>();
+    for (const auto& name : names) {
+        arr.add(name);
+    }
+    String output;
+    serializeJson(doc, output);
+    return output;
+}
+
+String WebManager::getBaseAnimationsJson() {
     StaticJsonDocument<1024> doc;
-    std::vector<std::string> names = animManager.getAnimationNames();
+    std::vector<std::string> names = animManager.getBaseAnimationNames();
     JsonArray arr = doc.to<JsonArray>();
     for (const auto& name : names) {
         arr.add(name);
@@ -218,23 +272,24 @@ String WebManager::getAnimationsJson() {
 
 String WebManager::getParamsJson() {
     StaticJsonDocument<2048> doc;
-    JsonArray arr = doc.to<JsonArray>();
+    // Root is object
     Animation* current = animManager.getCurrentAnimation();
     if (current) {
+        doc["baseType"] = current->getTypeName();
+        JsonArray arr = doc.createNestedArray("params");
+        
         for (const auto& param : current->getParameters()) {
             JsonObject obj = arr.createNestedObject();
             obj["name"] = param.name;
             obj["description"] = param.description;
             obj["type"] = (int)param.type;
             
-            // Metadata
             if (param.type == PARAM_INT || param.type == PARAM_FLOAT || param.type == PARAM_BYTE) {
                 obj["min"] = param.min;
                 obj["max"] = param.max;
                 obj["step"] = param.step;
             }
 
-            // Value extraction logic needs to be robust, doing simple switch for now
             switch(param.type) {
                 case PARAM_INT: obj["value"] = *(int*)param.value; break;
                 case PARAM_FLOAT: obj["value"] = *(float*)param.value; break;
@@ -261,6 +316,7 @@ String WebManager::getParamsJson() {
     serializeJson(doc, output);
     return output;
 }
+
 
 String WebManager::getPeersJson() {
     StaticJsonDocument<2048> doc;

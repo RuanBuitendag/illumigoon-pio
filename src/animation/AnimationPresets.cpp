@@ -11,7 +11,6 @@
 #include "animation/user_animations/BreathingAnimation.h"
 #include "animation/user_animations/AudioWaveAnimation.h"
 #include "animation/user_animations/KickReactionAnimation.h"
-// #include "animation/user_animations/FlowingLinesAnimation.h" // Seems exists but not used in original manager, verify if needed later?
 
 // Define internal resources locally
 namespace {
@@ -42,31 +41,91 @@ namespace {
 }
 
 void AnimationPresets::createAnimations(AnimationManager& manager) {
-    manager.add(new AudioWaveAnimation("Audio Wave"));
-    manager.add(new KickReactionAnimation("Kick Reaction"));
+    // 1. Register Base Animations
+    // Note: The names passed to constructors here are less important now as they are overridden by preset names, 
+    // but useful for the base type ID if getTypeName() returned name (but we implemented getTypeName separately).
+    
+    manager.registerBaseAnimation(new AudioWaveAnimation("AudioWave"));
+    manager.registerBaseAnimation(new KickReactionAnimation("KickReaction"));
+    manager.registerBaseAnimation(new LineAnimation("Line", 20, 90, CRGB(255, 30, 0), 10));
+    manager.registerBaseAnimation(new BreathingAnimation("Breathing", CRGB(255, 20, 0), 2000, 1000, 0, 255, 0, 2000, 0));
+    manager.registerBaseAnimation(new FireAnimation("Fire", standardFirePalette, 0.5f));
+    manager.registerBaseAnimation(new AuroraAnimation("Aurora", 54321));
+    manager.registerBaseAnimation(new StarryNightAnimation("StarryNight", 15));
+    manager.registerBaseAnimation(new SinusoidalLinesAnimation("SinusoidalLines", sinusoidalColors, 10, 1.0f, 5.0f, CRGB(30,30,30)));
 
+    // 2. Load existing presets
+    manager.loadPresets();
 
+    // 3. If no presets exist, create defaults
+    if (manager.getPresetNames().empty()) {
+        // --- Fire Defaults ---
+        Animation* fireBase = manager.getBaseAnimation("Fire");
+        if (fireBase) {
+            FireAnimation* fire = (FireAnimation*)fireBase;
+            
+            // Standard Fire
+            fire->setPalette(standardFirePalette);
+            fire->setSpeed(0.5f);
+            manager.savePreset("Standard Fire", "Fire");
+            
+            // Cool Fire
+            fire->setPalette(coolFirePalette);
+            fire->setSpeed(1.0f);
+            manager.savePreset("Cool Fire", "Fire");
+            
+            // Warm Fire
+            fire->setPalette(warmFirePalette);
+            fire->setSpeed(1.0f);
+            manager.savePreset("Warm Fire", "Fire");
+        }
 
-    // Line Animation
-    manager.add(new LineAnimation("Line", 20, 90, CRGB(255, 30, 0), 10));
-
-        // Breathing Animation (AHDSR)
-    // Attack=2000ms, Hold=1000ms, Decay=0, Sustain=255, SusTime=0, Release=2000ms, Rest=1000ms
-    manager.add(new BreathingAnimation("Breathing", CRGB(255, 20, 0), 2000, 1000, 0, 255, 0, 2000, 0));
-
-    // Fire Animations
-    manager.add(new FireAnimation("Fire", standardFirePalette, 0.5f));           // Standard
-    manager.add(new FireAnimation("CoolFire", coolFirePalette, 1.0f));    // Cool
-    manager.add(new FireAnimation("WarmFire", warmFirePalette, 1.0f));    // Warm
-
-    // Aurora
-    manager.add(new AuroraAnimation("Aurora", 54321));
-
-    // Starry Night
-    manager.add(new StarryNightAnimation("StarryNight", 15));
-
-    // Sinusoidal Lines
-    manager.add(new SinusoidalLinesAnimation("Sinusoidal", sinusoidalColors, 10, 1.0f, 5.0f, CRGB(30,30,30)));
-    manager.add(new SinusoidalLinesAnimation("SinusoidalDark", sinusoidalColors, 10, 1.0f, 5.0f)); // Dark variant (no bg?)
-    manager.add(new SinusoidalLinesAnimation("SinusoidalWarm", warmWhiteColors, 40, 1.0f, 2.0f));
+        // --- Line Defaults ---
+        Animation* lineBase = manager.getBaseAnimation("Line");
+        if (lineBase) {
+            // LineAnimation params are public or accessible via setParam?
+            // Existing LineAnimation doesn't have specific setters, but has registerParameter.
+            // Using generic setParam/deserialize is better, but here we can just set params via setters if they exist,
+            // OR use the generic setParam API.
+            
+            // Since LineAnimation logic uses pointers to member vars, updating members via setParam works.
+            
+            // Default Line
+            lineBase->setParam("Line Length", 20);
+            lineBase->setParam("Spacing", 90);
+            lineBase->setParam("Colour", CRGB(255, 30, 0));
+            lineBase->setParam("Speed", 10);
+            manager.savePreset("Red Line", "Line");
+        }
+        
+        // --- Sinusoidal Defaults ---
+        Animation* sinBase = manager.getBaseAnimation("SinusoidalLines");
+        if (sinBase) {
+             // We need to set palette. param name "Palette".
+             DynamicPalette p;
+             p.colors = sinusoidalColors;
+             sinBase->setParam("Palette", p);
+             sinBase->setParam("Line Length", 10);
+             sinBase->setParam("Background", CRGB(30,30,30));
+             manager.savePreset("Sinusoidal RGB", "SinusoidalLines");
+             
+             p.colors = warmWhiteColors;
+             sinBase->setParam("Palette", p);
+             sinBase->setParam("Line Length", 40);
+             sinBase->setParam("Background", CRGB::Black);
+             manager.savePreset("Sinusoidal Warm", "SinusoidalLines");
+        }
+        
+        // --- Aurora, StarryNight, Breath, etc can just save their current defaults as presets ---
+        if (manager.getBaseAnimation("Aurora")) manager.savePreset("Aurora Default", "Aurora");
+        if (manager.getBaseAnimation("StarryNight")) manager.savePreset("Starry Night", "StarryNight");
+        
+        if (manager.getBaseAnimation("Breathing")) {
+            // Default Red Breathing
+            manager.savePreset("Red Breathing", "Breathing");
+        }
+        
+        if (manager.getBaseAnimation("AudioWave")) manager.savePreset("Audio Wave", "AudioWave");
+        if (manager.getBaseAnimation("KickReaction")) manager.savePreset("Kick Reaction", "KickReaction");
+    }
 }

@@ -14,7 +14,10 @@ public:
             registerParameter("Palette", &this->palette, "Color scheme");
         }
 
+    std::string getTypeName() const override { return "Fire"; }
+
     void render(uint32_t epoch, CRGB* leds, int numLeds) const override {
+
         // Calculate update interval based on speed (default ~30ms at speed 1.0)
         float safeSpeed = (speed < 0.01f) ? 0.01f : speed;
         uint32_t interval = (uint32_t)(30.0f / safeSpeed);

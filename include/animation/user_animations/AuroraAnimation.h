@@ -14,7 +14,10 @@ public:
         registerParameter("Seed", &this->seed, 0, 65535, 1, "Pattern random seed");
     }
 
+    std::string getTypeName() const override { return "Aurora"; }
+
     void render(uint32_t epoch, CRGB* leds, int numLeds) const override {
+
         // Very slow time progression for calming effect
         float time = epoch * 0.01f;
 

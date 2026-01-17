@@ -38,7 +38,10 @@ public:
         syncLines();
     }
 
+    std::string getTypeName() const override { return "SinusoidalLines"; }
+
     void render(uint32_t epoch, CRGB* leds, int numLeds) const override {
+
         // Sync lines with palette state (which might have been updated by WebManager)
         syncLines();
 
