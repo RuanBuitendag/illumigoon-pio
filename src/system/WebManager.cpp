@@ -5,7 +5,7 @@ WebManager::WebManager(AnimationManager& video, MeshNetworkManager& mesh)
     : animManager(video), meshManager(mesh), server(80), ws("/ws"), fsMounted(false) {}
 
 void WebManager::begin() {
-    if(!LittleFS.begin()){
+    if(!LittleFS.begin(true)){
         Serial.println("An Error has occurred while mounting LittleFS");
         fsMounted = false;
     } else {

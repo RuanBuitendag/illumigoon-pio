@@ -21,6 +21,11 @@ AnimationManager::AnimationManager(LedController& ctrl) : controller(ctrl), curr
     // Or maybe restore last used?
     if (!presets.empty()) {
         setAnimation(presets[0].name);
+    } else {
+        // Fallback to first base animation if no presets exist
+        if (!baseAnimations.empty()) {
+             setAnimation(baseAnimations.begin()->first);
+        }
     }
 }
 
