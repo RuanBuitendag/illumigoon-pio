@@ -24,8 +24,15 @@ public:
     // Preset Management
     void loadPresets(); // Load from LittleFS
     bool savePreset(const std::string& name, const std::string& baseType); // Save current params as new preset
+    
+    // New: Save preset from raw JSON data (for mesh Sync)
+    bool savePresetFromData(const std::string& name, const std::string& baseType, const std::string& paramsJson);
+    
     bool renamePreset(const std::string& oldName, const std::string& newName);
     bool deletePreset(const std::string& name);
+    
+    bool exists(const std::string& name) const;
+    std::string getAllPresetsJson() const;
 
     void setAnimation(const std::string& presetName); // Select a PRESET
     std::string getCurrentAnimationName() const; // Returns PRESET name

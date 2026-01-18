@@ -4,9 +4,9 @@ SystemManager::SystemManager()
     : ledController(NUM_LEDS),
       wifi(WIFI_SSID, WIFI_PASSWORD),
       animation(ledController),
-      ota(wifi, ledController, OTA_SERVER_URL),
+      ota(wifi, ledController, OTA_SERVER_URL, "/api/version", "/api/firmware/", 60000), // 1 minute check interval
       mesh(ledController),
-      web(animation, mesh),
+      web(animation, mesh, ota),
       animationTaskHandle(NULL),
       meshTaskHandle(NULL)
 {}

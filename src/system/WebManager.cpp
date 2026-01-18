@@ -1,8 +1,8 @@
 #include "system/WebManager.h"
 #include <LittleFS.h>
 
-WebManager::WebManager(AnimationManager& video, MeshNetworkManager& mesh)
-    : animManager(video), meshManager(mesh), server(80), ws("/ws"), fsMounted(false) {}
+WebManager::WebManager(AnimationManager& video, MeshNetworkManager& mesh, OtaManager& ota)
+    : animManager(video), meshManager(mesh), otaManager(ota), server(80), ws("/ws"), fsMounted(false) {}
 
 void WebManager::begin() {
     if(!LittleFS.begin(true)){
@@ -14,6 +14,14 @@ void WebManager::begin() {
 
     setupRoutes();
     setupWebSocket();
+
+    meshManager.setAnimationManager(&animManager);
+    
+    // Register OTA Callback
+    meshManager.setOtaCallback([this]() {
+        Serial.println("WebManager: Triggering OTA check from mesh request");
+        otaManager.forceCheck();
+    });
 
     server.begin();
     Serial.println("Web Server started");
@@ -28,7 +36,7 @@ void WebManager::setupRoutes() {
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
     // Static Files (React App)
-    server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+
 
     // API: System Status
     server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -71,13 +79,37 @@ void WebManager::setupRoutes() {
 
     // API: Save Preset
     server.on("/api/savePreset", HTTP_POST, [this](AsyncWebServerRequest *request) {}, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        StaticJsonDocument<512> doc;
+        // Safety check for chunked uploads or partial data
+        if (total > len) {
+            request->send(400, "application/json", "{\"error\":\"Payload too large / Chunked upload not supported\"}");
+            return;
+        }
+
+        DynamicJsonDocument doc(1200); // Heap allocation
         DeserializationError error = deserializeJson(doc, data, len);
+        
         if (!error) {
             const char* name = doc["name"];
             const char* baseType = doc["baseType"];
             if (name && baseType) {
                 if (animManager.savePreset(name, baseType)) {
+                    // Success locally. Now broadcast.
+                   
+                    // Read file to ensure consistency and get params
+                    std::string path = "/presets/" + std::string(name) + ".json";
+                    File f = LittleFS.open(path.c_str(), FILE_READ);
+                    if (f) {
+                        DynamicJsonDocument pDoc(2048); // Heap allocation
+                        deserializeJson(pDoc, f);
+                        f.close();
+                        
+                        String paramsJson;
+                        serializeJson(pDoc["params"], paramsJson);
+                        
+                        // c_str() validity: valid until paramsJson is destroyed at end of scope
+                        meshManager.broadcastSavePreset(name, baseType, paramsJson.c_str());
+                    }
+
                     request->send(200, "application/json", "{\"status\":\"saved\"}");
                 } else {
                     request->send(500, "application/json", "{\"error\":\"Save failed\"}");
@@ -98,6 +130,10 @@ void WebManager::setupRoutes() {
             const char* oldName = doc["oldName"];
             const char* newName = doc["newName"];
             if (animManager.renamePreset(oldName, newName)) {
+                
+                // Broadcast Rename
+                meshManager.broadcastRenamePreset(oldName, newName);
+
                 request->send(200, "application/json", "{\"status\":\"renamed\"}");
             } else {
                 request->send(500, "application/json", "{\"error\":\"Rename failed\"}");
@@ -114,6 +150,7 @@ void WebManager::setupRoutes() {
         if (!error && doc.containsKey("name")) {
             const char* name = doc["name"];
             if (animManager.deletePreset(name)) {
+                meshManager.broadcastDeletePreset(name);
                 request->send(200, "application/json", "{\"status\":\"deleted\"}");
             } else {
                 request->send(500, "application/json", "{\"error\":\"Delete failed\"}");
@@ -122,12 +159,35 @@ void WebManager::setupRoutes() {
             request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
         }
     });
+    
+    // API: Check Preset Exists (Mesh Query)
+    server.on("/api/checkPreset", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        if (request->hasParam("name")) {
+            String name = request->getParam("name")->value();
+            bool exists = meshManager.checkPresetExists(name.c_str());
+            String json = "{\"exists\":";
+            json += (exists ? "true" : "false");
+            json += "}";
+            request->send(200, "application/json", json);
+        } else {
+             request->send(400, "application/json", "{\"error\":\"Missing name param\"}");
+        }
+    });
+    
+    // API: Export Presets
+    server.on("/api/presets/export", HTTP_GET, [this](AsyncWebServerRequest *request) {
+         std::string json = animManager.getAllPresetsJson();
+         request->send(200, "application/json", json.c_str());
+    });
 
     // API: Mesh Peers
     server.on("/api/mesh/peers", HTTP_GET, [this](AsyncWebServerRequest *request) {
         request->send(200, "application/json", getPeersJson());
     });
     
+    // Static Files (React App) - Must be last to avoid capturing API routes
+    server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
+
     // CORS Preflight
     // SPA Fallback: Serve index.html for any unknown path (so React Router can handle it)
     server.onNotFound([this](AsyncWebServerRequest *request) {
@@ -247,6 +307,9 @@ void WebManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
              bool p = doc["value"];
              animManager.setPower(p);
              ws.textAll("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
+        } else if (strcmp(cmd, "checkOTA") == 0) {
+             otaManager.forceCheck();
+             meshManager.broadcastCheckForUpdates();
         }
     }
 }

@@ -186,6 +186,63 @@ bool AnimationManager::deletePreset(const std::string& name) {
     return false;
 }
 
+bool AnimationManager::exists(const std::string& name) const {
+    for (const auto& p : presets) {
+        if (p.name == name) return true;
+    }
+    return false;
+}
+
+bool AnimationManager::savePresetFromData(const std::string& name, const std::string& baseType, const std::string& paramsJson) {
+     // Check if base animation exists
+    if (baseAnimations.find(baseType) == baseAnimations.end()) return false;
+    
+    std::string filename = name; 
+    std::string path = "/presets/" + filename + ".json";
+    
+    File file = LittleFS.open(path.c_str(), FILE_WRITE);
+    if (!file) return false;
+    
+    DynamicJsonDocument doc(4096);
+    doc["name"] = name;
+    doc["baseType"] = baseType;
+    
+    // Parse paramsJson and put into doc
+    DynamicJsonDocument paramsDoc(2048);
+    deserializeJson(paramsDoc, paramsJson);
+    doc["params"] = paramsDoc.as<JsonObject>();
+    
+    if (serializeJson(doc, file) == 0) {
+        file.close();
+        return false;
+    }
+    file.close();
+    
+    loadPresets(); 
+    return true;
+}
+
+
+std::string AnimationManager::getAllPresetsJson() const {
+    DynamicJsonDocument doc(4096);
+    JsonArray arr = doc.to<JsonArray>();
+    
+    for (const auto& p : presets) {
+        // Read file content and add to array
+        File file = LittleFS.open(p.filePath.c_str(), FILE_READ);
+        if (file) {
+            DynamicJsonDocument pDoc(1024);
+            deserializeJson(pDoc, file);
+            arr.add(pDoc.as<JsonObject>());
+            file.close();
+        }
+    }
+    
+    std::string output;
+    serializeJson(doc, output);
+    return output;
+}
+
 void AnimationManager::setAnimation(const std::string& name) {
     // 1. Try to find as Preset
     const Preset* targetPreset = nullptr;

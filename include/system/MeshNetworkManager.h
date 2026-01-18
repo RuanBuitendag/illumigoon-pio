@@ -22,7 +22,13 @@ enum class MessageType : uint8_t {
     PEER_ANNOUNCEMENT = 5,
     SHUTDOWN = 6,
     TIME_SYNC = 7, // New 
-    ANIMATION_STATE = 8 // New
+    ANIMATION_STATE = 8,
+    QUERY_PRESET = 9,
+    PRESET_EXIST_RESPONSE = 10,
+    SAVE_PRESET = 11,
+    DELETE_PRESET = 12,
+    CHECK_FOR_UPDATES = 13,
+    RENAME_PRESET = 14
 };
 
 struct __attribute__((packed)) AnimationStatePayload {
@@ -52,6 +58,9 @@ struct PeerInfo {
     unsigned long lastSeen;
 };
 
+// Forward declaration
+class AnimationManager;
+
 class MeshNetworkManager {
 public:
 
@@ -59,6 +68,9 @@ public:
 
     void begin();
     void update();
+    
+    // Set Animation Manager for preset operations
+    void setAnimationManager(AnimationManager* am) { animManager = am; }
 
     // New: Broadcast Animation State
     void broadcastAnimationState(const char* name, uint32_t startTime);
@@ -66,8 +78,18 @@ public:
     // New: Get synchronized network time
     uint32_t getNetworkTime() const;
 
+    // Preset Propagation
+    bool checkPresetExists(const std::string& name); // Blocking check
+    void broadcastSavePreset(const std::string& name, const std::string& baseType, const std::string& paramsJson);
+    // Removed duplicate declaration
+    void broadcastDeletePreset(const std::string& name);
+    void broadcastRenamePreset(const std::string& oldName, const std::string& newName);
 
+    // OTA / Updates
+    void setOtaCallback(std::function<void()> callback) { otaCallback = callback; }
+    void broadcastCheckForUpdates();
 
+    
     bool isMaster() const;
     bool isSlave() const;
 
@@ -75,6 +97,7 @@ public:
 
 private:
     LedController& ledController;
+    AnimationManager* animManager = nullptr;
     uint64_t myId;
     NodeState currentState;
     uint64_t masterId;
@@ -84,7 +107,16 @@ private:
     bool electionInProgress;
     bool receivedOK;
     
-    int32_t timeOffset; // New
+    int32_t timeOffset; 
+    double smoothedOffset;
+    bool hasSyncedOnce; 
+
+    // Query state
+    bool lastQueryFound;
+    std::string lastQueryName;
+
+    // Callbacks
+    std::function<void()> otaCallback;
 
 
     uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -98,6 +130,18 @@ private:
         unsigned long lastPacketTime;
     };
     FrameBuffer frameBuffer = {0, 0, 0, nullptr, 0};
+    
+    // Preset assembly buffer
+    struct PresetBuffer {
+        uint32_t sequenceNumber;
+        uint8_t totalPackets;
+        uint8_t receivedPackets;
+        std::string name;
+        std::string baseType;
+        std::vector<uint8_t> data; // Just the JSON part
+        unsigned long lastPacketTime;
+    };
+    PresetBuffer presetBuffer;
 
     static MeshNetworkManager* instance;
 
@@ -114,6 +158,15 @@ private:
     void handleFrameData(const MeshMessage& msg);
     void handleShutdown(const MeshMessage& msg);
     void handlePeerAnnouncement(const MeshMessage& msg);
+    
+    void handleQueryPreset(const MeshMessage& msg);
+    void handlePresetExistResponse(const MeshMessage& msg);
+    void handleSavePreset(const MeshMessage& msg);
+    // Removed duplicate handleSavePreset
+    void handleDeletePreset(const MeshMessage& msg);
+    void handleRenamePreset(const MeshMessage& msg);
+    void handleCheckForUpdates(const MeshMessage& msg);
+    
     void startElection();
     void becomeCoordinator();
     void sendHeartbeat();

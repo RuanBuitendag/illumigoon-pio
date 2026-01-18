@@ -5,10 +5,11 @@
 #include <ArduinoJson.h>
 #include "animation/AnimationManager.h"
 #include "system/MeshNetworkManager.h"
+#include "system/OtaManager.h"
 
 class WebManager {
 public:
-    WebManager(AnimationManager& video, MeshNetworkManager& mesh);
+    WebManager(AnimationManager& video, MeshNetworkManager& mesh, OtaManager& ota);
     
     void begin();
     void update(); // Call in loop for WS cleanup if needed
@@ -16,6 +17,7 @@ public:
 private:
     AnimationManager& animManager;
     MeshNetworkManager& meshManager;
+    OtaManager& otaManager;
     AsyncWebServer server;
     AsyncWebSocket ws;
     bool fsMounted;

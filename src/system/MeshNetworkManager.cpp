@@ -1,4 +1,5 @@
 #include "system/MeshNetworkManager.h"
+#include "animation/AnimationManager.h"
 #include <Arduino.h>
 
 // Static instance pointer for callback
@@ -12,7 +13,9 @@ MeshNetworkManager::MeshNetworkManager(LedController& ledController)
       lastHeartbeatTime(0),
       sequenceNumber(0),
       electionInProgress(false),
-      timeOffset(0) {}
+      timeOffset(0),
+      smoothedOffset(0),
+      hasSyncedOnce(false) {}
 
 void MeshNetworkManager::begin() {
     Serial.println("=== Mesh Network Manager Starting ===");
@@ -103,8 +106,8 @@ void MeshNetworkManager::update() {
             break;
 
         case NodeState::SLAVE:
-            // Check for master heartbeat timeout
-            if (now - lastHeartbeatTime > 1500) {
+            // Check for master heartbeat timeout - increased to 5000ms to allow for OTA checks
+            if (now - lastHeartbeatTime > 5000) {
                 Serial.println("Master heartbeat timeout, starting election");
                 startElection();
             }
@@ -196,6 +199,9 @@ void MeshNetworkManager::onReceive(const uint8_t* mac, const uint8_t* data, int 
             case MessageType::OK: Serial.print("OK"); break;
             case MessageType::COORDINATOR: Serial.print("COORDINATOR"); break;
             case MessageType::SHUTDOWN: Serial.print("SHUTDOWN"); break;
+            case MessageType::ANIMATION_STATE: Serial.print("ANIMATION_STATE"); break;
+            case MessageType::PEER_ANNOUNCEMENT: Serial.print("PEER_ANNOUNCEMENT"); break;
+            case MessageType::RENAME_PRESET: Serial.print("RENAME_PRESET"); break;
             default: Serial.print("UNKNOWN"); break;
         }
         Serial.print(" from ");
@@ -239,6 +245,30 @@ void MeshNetworkManager::onReceive(const uint8_t* mac, const uint8_t* data, int 
             handlePeerAnnouncement(msg);
             break;
 
+        case MessageType::QUERY_PRESET:
+            handleQueryPreset(msg);
+            break;
+
+        case MessageType::PRESET_EXIST_RESPONSE:
+            handlePresetExistResponse(msg);
+            break;
+
+        case MessageType::SAVE_PRESET:
+            handleSavePreset(msg);
+            break;
+
+        case MessageType::DELETE_PRESET:
+            handleDeletePreset(msg);
+            break;
+
+        case MessageType::CHECK_FOR_UPDATES:
+            handleCheckForUpdates(msg);
+            break;
+
+        case MessageType::RENAME_PRESET:
+            handleRenamePreset(msg);
+            break;
+
         default:
             break;
     }
@@ -265,13 +295,27 @@ void MeshNetworkManager::handleTimeSync(const MeshMessage& msg) {
         uint32_t masterTime;
         memcpy(&masterTime, msg.data, sizeof(uint32_t));
         
-        // Simple sync: Update offset
-        // Current Time (Local) = millis()
-        // Master Time = masterTime
-        // Offset = Master - Local
+        // Add estimated latency
+        const uint32_t LATENCY_MS = 15;
+        masterTime += LATENCY_MS;
+
         uint32_t localTime = millis();
-        timeOffset = masterTime - localTime;
-        Serial.printf("[TimeSync] Synced with master %llX. Master: %lu, Local: %lu, Offset: %ld\n", msg.senderId, masterTime, localTime, timeOffset);
+        int32_t instantaneousOffset = (int32_t)(masterTime - localTime);
+        
+        // First sync or large jump protection (>500ms)
+        if (!hasSyncedOnce || abs(instantaneousOffset - (int32_t)smoothedOffset) > 500) {
+            smoothedOffset = instantaneousOffset;
+            timeOffset = instantaneousOffset;
+            hasSyncedOnce = true;
+            Serial.printf("[TimeSync] Hard sync. Master: %lu, Local: %lu, Offset: %ld\n", masterTime, localTime, timeOffset);
+        } else {
+            // Exponential Smoothing (Alpha = 0.2)
+            // New = Alpha * Instant + (1 - Alpha) * Old
+            smoothedOffset = (0.2 * instantaneousOffset) + (0.8 * smoothedOffset);
+            timeOffset = (int32_t)smoothedOffset;
+             // Only log occasionally to reduce noise, or log debug
+            // Serial.printf("[TimeSync] Smooth sync. Offset: %ld (Raw: %ld)\n", timeOffset, instantaneousOffset);
+        }
     } else {
         Serial.printf("[TimeSync] Ignored sync from non-master %llX (current master: %llX)\n", msg.senderId, masterId);
     }
@@ -503,5 +547,283 @@ void MeshNetworkManager::handlePeerAnnouncement(const MeshMessage& msg) {
     if (!found) {
         knownPeers.push_back({msg.senderId, payload->ip, payload->role, millis()});
         Serial.printf("New Peer Discovered: %016llX at IP %u\n", msg.senderId, payload->ip);
+    }
+}
+
+// ==========================================
+// PRESET PROPAGATION IMPLEMENTATION
+// ==========================================
+
+bool MeshNetworkManager::checkPresetExists(const std::string& name) {
+    if (!animManager) return false;
+    
+    // 1. Check local first
+    if (animManager->exists(name)) {
+        return true;
+    }
+    
+    // 2. Query Network
+    lastQueryFound = false;
+    lastQueryName = name;
+    
+    MeshMessage msg;
+    msg.type = MessageType::QUERY_PRESET;
+    msg.senderId = myId;
+    msg.sequenceNumber = sequenceNumber++;
+    msg.totalPackets = 1;
+    msg.packetIndex = 0;
+    
+    // Payload is just the name
+    strncpy((char*)msg.data, name.c_str(), 229);
+    msg.data[229] = '\0'; 
+    msg.dataLength = strlen((char*)msg.data) + 1;
+    
+    sendMessage(msg);
+    
+    // 3. Wait for response (blocking, up to 500ms)
+    unsigned long start = millis();
+    while (millis() - start < 500) {
+        // Yield to allow background tasks (esp-now callbacks) to run? 
+        // On ESP32 Arduino, callbacks happen in ISR or separate task, but update() runs in loop.
+        // We are blocking the loop here.
+        // If receive happens in ISR/task, 'lastQueryFound' will be set.
+        delay(10); 
+        if (lastQueryFound) return true;
+    }
+    
+    return false;
+}
+
+void MeshNetworkManager::broadcastSavePreset(const std::string& name, const std::string& baseType, const std::string& paramsJson) {
+    // We need to send: UpdateType (Save), Name, BaseType, JSON Data.
+    // Format payload: Name\0BaseType\0JSONData
+    // We'll construct a large buffer and then fragment it.
+    
+    std::vector<uint8_t> totalPayload;
+    totalPayload.insert(totalPayload.end(), name.begin(), name.end());
+    totalPayload.push_back('\0');
+    totalPayload.insert(totalPayload.end(), baseType.begin(), baseType.end());
+    totalPayload.push_back('\0');
+    totalPayload.insert(totalPayload.end(), paramsJson.begin(), paramsJson.end());
+    
+    // Max data per packet: 230 bytes
+    size_t totalLen = totalPayload.size();
+    uint8_t totalPackets = (totalLen + 229) / 230;
+    
+    uint32_t seq = sequenceNumber++; // Same sequence for all fragments
+    
+    for (int i = 0; i < totalPackets; i++) {
+        MeshMessage msg;
+        msg.type = MessageType::SAVE_PRESET;
+        msg.senderId = myId;
+        msg.sequenceNumber = seq;
+        msg.totalPackets = totalPackets;
+        msg.packetIndex = i;
+        
+        size_t offset = i * 230;
+        size_t chunkLen = totalLen - offset;
+        if (chunkLen > 230) chunkLen = 230;
+        
+        memcpy(msg.data, totalPayload.data() + offset, chunkLen);
+        msg.dataLength = chunkLen;
+        
+        sendMessage(msg);
+        delay(10); // Small delay to prevent queue flooding
+    }
+}
+
+void MeshNetworkManager::broadcastDeletePreset(const std::string& name) {
+    MeshMessage msg;
+    msg.type = MessageType::DELETE_PRESET;
+    msg.senderId = myId;
+    msg.sequenceNumber = sequenceNumber++;
+    msg.totalPackets = 1;
+    msg.packetIndex = 0;
+    
+    strncpy((char*)msg.data, name.c_str(), 229);
+    sendMessage(msg);
+}
+
+void MeshNetworkManager::broadcastRenamePreset(const std::string& oldName, const std::string& newName) {
+    MeshMessage msg;
+    msg.type = MessageType::RENAME_PRESET;
+    msg.senderId = myId;
+    msg.sequenceNumber = sequenceNumber++;
+    msg.totalPackets = 1;
+    msg.packetIndex = 0;
+    
+    // Payload: OldName\0NewName\0
+    std::string payload = oldName;
+    payload += '\0';
+    payload += newName;
+    payload += '\0';
+    
+    if (payload.length() > 230) {
+        Serial.println("Mesh: Rename payload too large!");
+        return;
+    }
+    
+    memcpy(msg.data, payload.c_str(), payload.length());
+    msg.dataLength = payload.length();
+    
+    sendMessage(msg);
+}
+
+void MeshNetworkManager::handleQueryPreset(const MeshMessage& msg) {
+    if (!animManager) return;
+    
+    char name[230];
+    memcpy(name, msg.data, msg.dataLength);
+    name[229] = '\0'; // Safety
+    
+    if (animManager->exists(name)) {
+        // Send Response
+        MeshMessage response;
+        response.type = MessageType::PRESET_EXIST_RESPONSE;
+        response.senderId = myId;
+        response.sequenceNumber = sequenceNumber++;
+        response.totalPackets = 1;
+        response.packetIndex = 0;
+         
+        // Return name so sender knows WHICH query this answers
+        memcpy(response.data, name, strlen(name) + 1);
+        response.dataLength = strlen(name) + 1;
+        
+        sendMessage(response); 
+    }
+}
+
+void MeshNetworkManager::handlePresetExistResponse(const MeshMessage& msg) {
+    char name[230];
+    memcpy(name, msg.data, msg.dataLength);
+    name[229] = '\0';
+    
+    if (lastQueryName == name) {
+        lastQueryFound = true;
+    }
+}
+
+void MeshNetworkManager::handleSavePreset(const MeshMessage& msg) {
+    if (!animManager) return;
+    
+    unsigned long now = millis();
+    
+    if (presetBuffer.sequenceNumber != msg.sequenceNumber) {
+        // New transfer
+        presetBuffer.sequenceNumber = msg.sequenceNumber;
+        presetBuffer.totalPackets = msg.totalPackets;
+        presetBuffer.receivedPackets = 0;
+        presetBuffer.data.clear();
+        presetBuffer.lastPacketTime = now;
+        
+        // Reserve estimated size
+        presetBuffer.data.resize(msg.totalPackets * 230);
+    }
+    
+    // Packet Handling
+    if (msg.packetIndex < presetBuffer.totalPackets) {
+         size_t offset = msg.packetIndex * 230;
+         if (offset + msg.dataLength <= presetBuffer.data.size()) {
+             memcpy(presetBuffer.data.data() + offset, msg.data, msg.dataLength);
+             presetBuffer.receivedPackets++;
+             presetBuffer.lastPacketTime = now;
+         }
+    }
+    
+    // Check completion
+    if (presetBuffer.receivedPackets >= presetBuffer.totalPackets) {
+        // Unpack: Name\0BaseType\0JSON
+        const char* raw = (const char*)presetBuffer.data.data();
+        size_t totalSize = presetBuffer.data.size(); // Actually we might have resized too big, use explicit search?
+        // Wait, resize was max possible. 
+        // We need to trust null terminators.
+        
+        std::string pName = raw;
+        size_t nameLen = pName.length() + 1;
+        
+        if (nameLen < totalSize) {
+            std::string pBase = raw + nameLen;
+            size_t baseLen = pBase.length() + 1;
+            
+            if (nameLen + baseLen < totalSize) {
+                std::string pJson = raw + nameLen + baseLen;
+                
+                // Save it!
+                Serial.printf("Mesh: Saving preset '%s' (%s)\n", pName.c_str(), pBase.c_str());
+                animManager->savePresetFromData(pName, pBase, pJson);
+            }
+        }
+        
+        // Reset
+        presetBuffer.sequenceNumber = 0; 
+    }
+}
+
+void MeshNetworkManager::handleDeletePreset(const MeshMessage& msg) {
+    if (!animManager) return;
+    
+    char name[230];
+    memcpy(name, msg.data, msg.dataLength);
+    name[229] = '\0';
+    
+    animManager->deletePreset(name);
+}
+
+void MeshNetworkManager::handleRenamePreset(const MeshMessage& msg) {
+    if (!animManager) return;
+    
+    const char* raw = (const char*)msg.data;
+    size_t len = msg.dataLength;
+    
+    // Safe extraction
+    // Ensure null termination within bounds
+    // Format: OldName\0NewName\0
+    
+    // Validation
+    bool valid = false;
+    for (size_t i = 0; i < len; i++) {
+        if (msg.data[i] == '\0') {
+             // Found first null terminator.
+             // Check if there is another one after it.
+             for(size_t j = i + 1; j < len; j++) {
+                 if (msg.data[j] == '\0') {
+                     valid = true;
+                     break;
+                 }
+             }
+             break;
+        }
+    }
+    
+    if (valid) {
+        std::string oldName = raw;
+        std::string newName = raw + oldName.length() + 1;
+        
+        Serial.printf("Mesh: Renaming preset from '%s' to '%s'\n", oldName.c_str(), newName.c_str());
+        animManager->renamePreset(oldName, newName);
+    } else {
+        Serial.println("Mesh: Invalid Rename Payload");
+    }
+}
+
+void MeshNetworkManager::broadcastCheckForUpdates() {
+    MeshMessage msg;
+    msg.type = MessageType::CHECK_FOR_UPDATES;
+    msg.senderId = myId;
+    msg.sequenceNumber = sequenceNumber++;
+    msg.totalPackets = 1;
+    msg.packetIndex = 0;
+    msg.dataLength = 0;
+    
+    Serial.println("Mesh: Broadcasting check for updates");
+    sendMessage(msg);
+}
+
+void MeshNetworkManager::handleCheckForUpdates(const MeshMessage& msg) {
+    if (msg.senderId == myId) return; // Should be filtered already but good safety
+    
+    Serial.println("Mesh: Received check for updates request");
+    if (otaCallback) {
+        otaCallback();
     }
 }

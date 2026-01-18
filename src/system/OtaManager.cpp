@@ -46,6 +46,12 @@ void OtaManager::update() {
     checkForUpdates();
 }
 
+void OtaManager::forceCheck() {
+    Serial.println("OTA: Manual check triggered");
+    lastCheck = millis(); // Reset timer so we don't double check immediately after
+    checkForUpdates();
+}
+
 int OtaManager::compareVersions(const char* v1, const char* v2) {
     int a1, b1, c1;
     int a2, b2, c2;
