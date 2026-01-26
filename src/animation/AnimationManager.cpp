@@ -281,6 +281,8 @@ void AnimationManager::setAnimation(const std::string& name) {
     // 2. Try to find as Base Animation
     auto it = baseAnimations.find(name);
     if (it != baseAnimations.end()) {
+         // Reset to defaults when selecting a base animation directly
+         it->second->resetToDefaults();
          currentAnimation = it->second;
          currentPresetName = name; // Treat base name as the current "preset" name
          return;

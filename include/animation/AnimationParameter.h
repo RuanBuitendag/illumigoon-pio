@@ -58,8 +58,21 @@ enum ParameterType {
 };
 
 struct AnimationParameter {
+    // Default values storage union
+    union DefaultValue {
+        int intVal;
+        float floatVal;
+        uint8_t byteVal;
+        bool boolVal;
+        uint32_t colorVal; // CRGB as packed RGB
+        // DynamicPalette is too complex for union, stored separately
+    };
+
     AnimationParameter(const char* n, ParameterType t, void* v, const char* desc = "", float mn = 0, float mx = 100, float s = 1)
-        : name(n), type(t), value(v), description(desc), min(mn), max(mx), step(s) {}
+        : name(n), type(t), value(v), description(desc), min(mn), max(mx), step(s) {
+        // Store the initial value as the default
+        storeCurrentAsDefault();
+    }
 
     const char* name;
     const char* description;
@@ -70,6 +83,62 @@ struct AnimationParameter {
     float min;
     float max;
     float step;
+
+    // Default value storage
+    DefaultValue defaultVal;
+    DynamicPalette defaultPalette; // For PARAM_DYNAMIC_PALETTE type
+
+    void storeCurrentAsDefault() {
+        switch (type) {
+            case PARAM_INT:
+                defaultVal.intVal = *static_cast<int*>(value);
+                break;
+            case PARAM_FLOAT:
+                defaultVal.floatVal = *static_cast<float*>(value);
+                break;
+            case PARAM_BYTE:
+                defaultVal.byteVal = *static_cast<uint8_t*>(value);
+                break;
+            case PARAM_BOOL:
+                defaultVal.boolVal = *static_cast<bool*>(value);
+                break;
+            case PARAM_COLOR: {
+                CRGB c = *static_cast<CRGB*>(value);
+                defaultVal.colorVal = ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+                break;
+            }
+            case PARAM_DYNAMIC_PALETTE:
+                defaultPalette = *static_cast<DynamicPalette*>(value);
+                break;
+        }
+    }
+
+    void resetToDefault() {
+        switch (type) {
+            case PARAM_INT:
+                *static_cast<int*>(value) = defaultVal.intVal;
+                break;
+            case PARAM_FLOAT:
+                *static_cast<float*>(value) = defaultVal.floatVal;
+                break;
+            case PARAM_BYTE:
+                *static_cast<uint8_t*>(value) = defaultVal.byteVal;
+                break;
+            case PARAM_BOOL:
+                *static_cast<bool*>(value) = defaultVal.boolVal;
+                break;
+            case PARAM_COLOR: {
+                CRGB* c = static_cast<CRGB*>(value);
+                c->r = (defaultVal.colorVal >> 16) & 0xFF;
+                c->g = (defaultVal.colorVal >> 8) & 0xFF;
+                c->b = defaultVal.colorVal & 0xFF;
+                break;
+            }
+            case PARAM_DYNAMIC_PALETTE:
+                *static_cast<DynamicPalette*>(value) = defaultPalette;
+                break;
+        }
+    }
 };
 
 #endif

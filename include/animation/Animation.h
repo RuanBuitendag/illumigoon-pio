@@ -33,6 +33,12 @@ public:
     
     AnimationParameter* findParameter(const std::string& name);
 
+    void resetToDefaults() {
+        for (auto& p : parameters) {
+            p.resetToDefault();
+        }
+    }
+
 protected:
     void registerParameter(const char* name, int* value, int min = 0, int max = 255, int step = 1, const char* desc = "") {
         parameters.push_back({name, PARAM_INT, value, desc, (float)min, (float)max, (float)step});
