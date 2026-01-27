@@ -97,17 +97,22 @@ void MeshNetworkManager::update() {
             break;
 
         case NodeState::MASTER:
-            // Send heartbeat every 500ms
-            if (now - lastHeartbeatTime > 500) {
+            // Send heartbeat every 5 seconds
+            if (now - lastHeartbeatTime > 5000) {
                 sendHeartbeat();
-                sendTimeSync();
                 lastHeartbeatTime = now;
+            }
+            // Send time sync every 10 seconds (separate from heartbeat)
+            static unsigned long lastTimeSyncTime = 0;
+            if (now - lastTimeSyncTime > 10000) {
+                sendTimeSync();
+                lastTimeSyncTime = now;
             }
             break;
 
         case NodeState::SLAVE:
-            // Check for master heartbeat timeout - increased to 5000ms to allow for OTA checks
-            if (now - lastHeartbeatTime > 5000) {
+            // Check for master heartbeat timeout - 15s to allow for 5s heartbeat interval + OTA checks
+            if (now - lastHeartbeatTime > 15000) {
                 Serial.println("Master heartbeat timeout, starting election");
                 startElection();
             }
