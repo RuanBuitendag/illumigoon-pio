@@ -581,24 +581,29 @@ void MeshNetworkManager::broadcastSavePreset(const std::string& name, const std:
     uint8_t totalPackets = (totalLen + 229) / 230;
     uint32_t seq = sequenceNumber++;
     
-    for (int i = 0; i < totalPackets; i++) {
-        MeshMessage msg;
-        msg.type = MessageType::SAVE_PRESET;
-        msg.senderId = myId;
-        msg.sequenceNumber = seq;
-        msg.totalPackets = totalPackets;
-        msg.packetIndex = i;
-        
-        size_t offset = i * 230;
-        size_t chunkLen = totalLen - offset;
-        if (chunkLen > 230) chunkLen = 230;
-        
-        memcpy(msg.data, totalPayload.data() + offset, chunkLen);
-        msg.dataLength = chunkLen;
-        
-        sendMessage(msg);
-        Serial.printf("Mesh: Sent preset packet %d/%d\r\n", i + 1, totalPackets);
-        delay(10);
+    // Repeat the broadcast 3 times for redundancy
+    for (int r = 0; r < 3; r++) {
+        for (int i = 0; i < totalPackets; i++) {
+            MeshMessage msg;
+            msg.type = MessageType::SAVE_PRESET;
+            msg.senderId = myId;
+            msg.sequenceNumber = seq;
+            msg.totalPackets = totalPackets;
+            msg.packetIndex = i;
+            
+            size_t offset = i * 230;
+            size_t chunkLen = totalLen - offset;
+            if (chunkLen > 230) chunkLen = 230;
+            
+            memcpy(msg.data, totalPayload.data() + offset, chunkLen);
+            msg.dataLength = chunkLen;
+            
+            sendMessage(msg);
+            // Slightly longer delay between packets to prevent congestion
+            delay(20); 
+        }
+        Serial.printf("Mesh: Sent preset broadcast round %d/3\r\n", r + 1);
+        delay(50); // Delay between rounds
     }
     Serial.println("Mesh: Preset broadcast complete");
 }
@@ -696,14 +701,30 @@ void MeshNetworkManager::handleSavePreset(const MeshMessage& msg) {
         
         // Reserve estimated size
         presetBuffer.data.resize(msg.totalPackets * 230);
+        
+        // Resize flags and reset
+        presetBuffer.receivedPacketFlags.resize(msg.totalPackets);
+        std::fill(presetBuffer.receivedPacketFlags.begin(), presetBuffer.receivedPacketFlags.end(), false);
     }
     
     // Packet Handling
     if (msg.packetIndex < presetBuffer.totalPackets) {
+         // Check if we already have this packet
+         if (presetBuffer.receivedPacketFlags.size() > msg.packetIndex && presetBuffer.receivedPacketFlags[msg.packetIndex]) {
+             // Duplicate, ignore
+             return;
+         }
+
          size_t offset = msg.packetIndex * 230;
          if (offset + msg.dataLength <= presetBuffer.data.size()) {
              memcpy(presetBuffer.data.data() + offset, msg.data, msg.dataLength);
              presetBuffer.receivedPackets++;
+             
+             // Mark as received
+             if (presetBuffer.receivedPacketFlags.size() > msg.packetIndex) {
+                 presetBuffer.receivedPacketFlags[msg.packetIndex] = true;
+             }
+             
              presetBuffer.lastPacketTime = now;
          }
     }

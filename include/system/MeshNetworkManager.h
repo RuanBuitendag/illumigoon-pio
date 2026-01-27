@@ -138,6 +138,7 @@ private:
         std::string name;
         std::string baseType;
         std::vector<uint8_t> data; // Just the JSON part
+        std::vector<bool> receivedPacketFlags; // Track which packets we have received
         unsigned long lastPacketTime;
     };
     PresetBuffer presetBuffer;
