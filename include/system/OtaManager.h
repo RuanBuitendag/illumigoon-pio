@@ -16,6 +16,7 @@ public:
     void begin();
     void update();
     void forceCheck();
+    String getVersion() const { return currentVersion; }
 
 private:
     WiFiManager& wifi;

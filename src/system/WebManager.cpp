@@ -321,6 +321,7 @@ String WebManager::getSystemStatusJson() {
     doc["animation"] = animManager.getCurrentAnimationName();
     doc["power"] = animManager.getPower();
     doc["ip"] = WiFi.localIP().toString();
+    doc["version"] = otaManager.getVersion();
     String output;
     serializeJson(doc, output);
     return output;
