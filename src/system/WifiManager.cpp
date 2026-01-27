@@ -17,7 +17,7 @@ bool WiFiManager::update() {
 
     if (status != WL_CONNECTED) {
         if (!connecting) {
-            Serial.println("\nWiFi disconnected. Reconnecting...");
+            Serial.println("\r\nWiFi disconnected. Reconnecting...");
             WiFi.begin(ssid, password);
             connecting = true;
             mdnsStarted = false;

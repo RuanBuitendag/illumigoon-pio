@@ -18,7 +18,6 @@ enum class MessageType : uint8_t {
     ELECTION = 1,
     OK = 2,
     COORDINATOR = 3,
-    FRAME_DATA = 4,
     PEER_ANNOUNCEMENT = 5,
     SHUTDOWN = 6,
     TIME_SYNC = 7, // New 
@@ -143,6 +142,18 @@ private:
     };
     PresetBuffer presetBuffer;
 
+    // Pending broadcast queue (to send from main loop, not HTTP callback)
+    struct PendingPresetBroadcast {
+        bool pending = false;
+        std::string name;
+        std::string baseType;
+        std::string paramsJson;
+    };
+    PendingPresetBroadcast pendingSavePreset;
+    std::string pendingDeletePreset;
+    struct PendingRename { std::string oldName; std::string newName; };
+    PendingRename pendingRenamePreset;
+
     static MeshNetworkManager* instance;
 
     static void onReceiveWrapper(const uint8_t* mac, const uint8_t* data, int len);
@@ -166,6 +177,11 @@ private:
     void handleDeletePreset(const MeshMessage& msg);
     void handleRenamePreset(const MeshMessage& msg);
     void handleCheckForUpdates(const MeshMessage& msg);
+    
+    // Actual broadcast implementations (called from update())
+    void doSendSavePreset(const std::string& name, const std::string& baseType, const std::string& paramsJson);
+    void doSendDeletePreset(const std::string& name);
+    void doSendRenamePreset(const std::string& oldName, const std::string& newName);
     
     void startElection();
     void becomeCoordinator();

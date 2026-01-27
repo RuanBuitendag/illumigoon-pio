@@ -39,7 +39,7 @@ int LedController::getNumLeds() const {
 
 void LedController::showProgress(float fraction) {
     // Only print occasionally or it floods serial
-    // Serial.printf("  > showProgress %.2f\n", fraction); 
+    // Serial.printf("  > showProgress %.2f\r\n", fraction); 
     
     if (xSemaphoreTake(mutex, portMAX_DELAY)) {
         int ledsOn = fraction * numLeds;

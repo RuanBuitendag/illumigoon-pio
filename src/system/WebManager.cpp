@@ -221,12 +221,12 @@ void WebManager::setupWebSocket() {
 
 void WebManager::onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
     if (type == WS_EVT_CONNECT) {
-        Serial.printf("WS Client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+        Serial.printf("WS Client #%u connected from %s\r\n", client->id(), client->remoteIP().toString().c_str());
         // Send initial state
         client->text("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
         client->text("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
     } else if (type == WS_EVT_DISCONNECT) {
-        Serial.printf("WS Client #%u disconnected\n", client->id());
+        Serial.printf("WS Client #%u disconnected\r\n", client->id());
     } else if (type == WS_EVT_DATA) {
         handleWebSocketMessage(arg, data, len);
     }
