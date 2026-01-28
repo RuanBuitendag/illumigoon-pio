@@ -37,4 +37,9 @@ private:
     TaskHandle_t meshTaskHandle;
 
     WebManager web;
+
+    // Config Persistence
+    void loadConfig();
+    void saveConfig();
+    std::string lastSavedGroupName;
 };

@@ -27,11 +27,15 @@ enum class MessageType : uint8_t {
     SAVE_PRESET = 11,
     DELETE_PRESET = 12,
     CHECK_FOR_UPDATES = 13,
-    RENAME_PRESET = 14
+    RENAME_PRESET = 14,
+    ASSIGN_GROUP = 15,
+    SYNC_PARAM = 16,
+    SYNC_POWER = 17 // New
 };
 
 struct __attribute__((packed)) AnimationStatePayload {
     char animationName[32];
+    char groupName[32]; // New
     uint32_t startTime;
 };
 
@@ -48,12 +52,14 @@ struct __attribute__((packed)) MeshMessage {
 struct __attribute__((packed)) PeerAnnouncementPayload {
     uint32_t ip;
     NodeState role;
+    char groupName[32]; // New
 };
 
 struct PeerInfo {
     uint64_t id;
     uint32_t ip;
     NodeState role;
+    std::string groupName; // New
     unsigned long lastSeen;
 };
 
@@ -88,6 +94,10 @@ public:
     void setOtaCallback(std::function<void()> callback) { otaCallback = callback; }
     void broadcastCheckForUpdates();
 
+    // Group Management
+    void broadcastAssignGroup(uint64_t targetId, const char* newGroupName);
+    std::string getGroupName() const { return myGroupName; }
+    void setGroupName(const std::string& name); // Persist logic will be in SystemManager
     
     bool isMaster() const;
     bool isSlave() const;
@@ -143,6 +153,17 @@ private:
     };
     PresetBuffer presetBuffer;
 
+    // Param assembly buffer
+    struct ParamBuffer {
+        uint32_t sequenceNumber;
+        uint8_t totalPackets;
+        uint8_t receivedPackets;
+        std::vector<uint8_t> data; // JSON value
+        std::vector<bool> receivedPacketFlags;
+        unsigned long lastPacketTime;
+    };
+    ParamBuffer paramBuffer;
+
     // Pending broadcast queue (to send from main loop, not HTTP callback)
     struct PendingPresetBroadcast {
         bool pending = false;
@@ -154,6 +175,28 @@ private:
     std::string pendingDeletePreset;
     struct PendingRename { std::string oldName; std::string newName; };
     PendingRename pendingRenamePreset;
+
+    struct PendingGroupAssignment { 
+        bool pending = false;
+        uint64_t targetId; 
+        std::string groupName; 
+    };
+    PendingGroupAssignment pendingGroupAssignment;
+
+    struct PendingParamSync {
+        bool pending = false;
+        std::string paramName;
+        std::string jsonValue;
+    };
+    PendingParamSync pendingParamSync;
+
+    struct PendingPowerSync {
+        bool pending = false;
+        bool powerOn;
+    };
+    PendingPowerSync pendingPowerSync;
+
+    std::string myGroupName;
 
     static MeshNetworkManager* instance;
 
@@ -178,11 +221,17 @@ private:
     void handleDeletePreset(const MeshMessage& msg);
     void handleRenamePreset(const MeshMessage& msg);
     void handleCheckForUpdates(const MeshMessage& msg);
-    
+    void handleAssignGroup(const MeshMessage& msg);
+    void handleSyncParam(const MeshMessage& msg);
+    void handleSyncPower(const MeshMessage& msg);
+
     // Actual broadcast implementations (called from update())
     void doSendSavePreset(const std::string& name, const std::string& baseType, const std::string& paramsJson);
     void doSendDeletePreset(const std::string& name);
     void doSendRenamePreset(const std::string& oldName, const std::string& newName);
+    void doSendAssignGroup(uint64_t targetId, const std::string& groupName);
+    void doSendSyncParam(const std::string& paramName, const std::string& jsonValue);
+    void doSendSyncPower(bool powerOn);
     
     void startElection();
     void becomeCoordinator();
@@ -194,5 +243,9 @@ private:
     std::vector<PeerInfo> knownPeers;
 
 public: 
+    // Group Sync
+    void broadcastSyncParam(const std::string& paramName, const std::string& jsonValue); // JSON value for simplicity
+    void broadcastSyncPower(bool powerOn);
+    
     std::vector<PeerInfo> getPeers() const { return knownPeers; }
 };

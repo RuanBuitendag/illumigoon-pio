@@ -15,7 +15,8 @@ MeshNetworkManager::MeshNetworkManager(LedController& ledController)
       electionInProgress(false),
       timeOffset(0),
       smoothedOffset(0),
-      hasSyncedOnce(false) {}
+      hasSyncedOnce(false),
+      myGroupName("") {}
 
 void MeshNetworkManager::begin() {
     Serial.println("=== Mesh Network Manager Starting ===");
@@ -47,7 +48,7 @@ void MeshNetworkManager::begin() {
     esp_now_peer_info_t peerInfo = {};
     memset(&peerInfo, 0, sizeof(peerInfo));
     memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-    peerInfo.channel = WiFi.channel();  // Match WiFi channel
+    peerInfo.channel = 0;  // Use current channel (dictated by WiFi)
     peerInfo.encrypt = false;
     
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
@@ -124,11 +125,29 @@ void MeshNetworkManager::update() {
         sendPeerAnnouncement();
         lastAnnouncement = millis();
     }
+
+    // Handle pending group assignment broadcast (from main loop)
+    if (pendingGroupAssignment.pending) {
+        doSendAssignGroup(pendingGroupAssignment.targetId, pendingGroupAssignment.groupName);
+        pendingGroupAssignment.pending = false;
+    }
+
+    // Handle pending param sync
+    if (pendingParamSync.pending) {
+        doSendSyncParam(pendingParamSync.paramName, pendingParamSync.jsonValue);
+        pendingParamSync.pending = false;
+    }
+
+    // Handle pending power sync
+    if (pendingPowerSync.pending) {
+        doSendSyncPower(pendingPowerSync.powerOn);
+        pendingPowerSync.pending = false;
+    }
 }
 
 // New: Broadcast Animation State
 void MeshNetworkManager::broadcastAnimationState(const char* name, uint32_t startTime) {
-    if (currentState != NodeState::MASTER) return;
+    // if (currentState != NodeState::MASTER) return; // Allow anyone to broadcast in a group
 
     MeshMessage msg;
     msg.type = MessageType::ANIMATION_STATE;
@@ -141,6 +160,8 @@ void MeshNetworkManager::broadcastAnimationState(const char* name, uint32_t star
     AnimationStatePayload payload;
     strncpy(payload.animationName, name, 31);
     payload.animationName[31] = '\0'; // Ensure null termination
+    strncpy(payload.groupName, myGroupName.c_str(), 31);
+    payload.groupName[31] = '\0';
     payload.startTime = startTime;
     
     memcpy(msg.data, &payload, sizeof(AnimationStatePayload));
@@ -217,6 +238,9 @@ void MeshNetworkManager::onReceive(const uint8_t* mac, const uint8_t* data, int 
             case MessageType::DELETE_PRESET: Serial.print("DELETE_PRESET"); break;
             case MessageType::HEARTBEAT: Serial.print("HEARTBEAT"); break;
             case MessageType::TIME_SYNC: Serial.print("TIME_SYNC"); break;
+            case MessageType::ASSIGN_GROUP: Serial.print("ASSIGN_GROUP"); break;
+            case MessageType::SYNC_PARAM: Serial.print("SYNC_PARAM"); break;
+            case MessageType::SYNC_POWER: Serial.print("SYNC_POWER"); break;
             default: Serial.print("UNKNOWN"); break;
         }
         Serial.print(" from ");
@@ -278,6 +302,18 @@ void MeshNetworkManager::onReceive(const uint8_t* mac, const uint8_t* data, int 
 
         case MessageType::RENAME_PRESET:
             handleRenamePreset(msg);
+            break;
+
+        case MessageType::ASSIGN_GROUP:
+            handleAssignGroup(msg);
+            break;
+
+        case MessageType::SYNC_PARAM:
+            handleSyncParam(msg);
+            break;
+
+        case MessageType::SYNC_POWER:
+            handleSyncPower(msg);
             break;
 
         default:
@@ -492,6 +528,8 @@ void MeshNetworkManager::sendPeerAnnouncement() {
     PeerAnnouncementPayload payload;
     payload.ip = (uint32_t)WiFi.localIP();
     payload.role = currentState;
+    strncpy(payload.groupName, myGroupName.c_str(), 31);
+    payload.groupName[31] = '\0';
 
     memcpy(msg.data, &payload, sizeof(PeerAnnouncementPayload));
     msg.dataLength = sizeof(PeerAnnouncementPayload);
@@ -510,6 +548,7 @@ void MeshNetworkManager::handlePeerAnnouncement(const MeshMessage& msg) {
         if (peer.id == msg.senderId) {
             peer.ip = payload->ip;
             peer.role = payload->role;
+            peer.groupName = payload->groupName;
             peer.lastSeen = millis();
             found = true;
             break;
@@ -517,8 +556,8 @@ void MeshNetworkManager::handlePeerAnnouncement(const MeshMessage& msg) {
     }
     
     if (!found) {
-        knownPeers.push_back({msg.senderId, payload->ip, payload->role, millis()});
-        Serial.printf("New Peer Discovered: %016llX at IP %u\r\n", msg.senderId, payload->ip);
+        knownPeers.push_back({msg.senderId, payload->ip, payload->role, payload->groupName, millis()});
+        Serial.printf("New Peer Discovered: %016llX at IP %u, Group: %s\r\n", msg.senderId, payload->ip, payload->groupName);
     }
 }
 
@@ -829,5 +868,224 @@ void MeshNetworkManager::handleCheckForUpdates(const MeshMessage& msg) {
     Serial.println("Mesh: Received check for updates request");
     if (otaCallback) {
         otaCallback();
+    }
+}
+
+// ==========================================
+// GROUP MANAGEMENT IMPLEMENTATION
+// ==========================================
+
+void MeshNetworkManager::setGroupName(const std::string& name) {
+    if (myGroupName != name) {
+        Serial.printf("Mesh: Group name changed from '%s' to '%s'\r\n", myGroupName.c_str(), name.c_str());
+        myGroupName = name;
+        // Trigger announcement immediately so others know
+        sendPeerAnnouncement();
+    }
+}
+
+void MeshNetworkManager::broadcastAssignGroup(uint64_t targetId, const char* newGroupName) {
+    Serial.printf("Mesh: Queuing ASSIGN_GROUP for %016llX -> '%s'\r\n", targetId, newGroupName);
+    pendingGroupAssignment.targetId = targetId;
+    pendingGroupAssignment.groupName = newGroupName;
+    pendingGroupAssignment.pending = true;
+}
+
+void MeshNetworkManager::doSendAssignGroup(uint64_t targetId, const std::string& groupName) {
+    MeshMessage msg;
+    msg.type = MessageType::ASSIGN_GROUP;
+    msg.senderId = myId;
+    msg.sequenceNumber = sequenceNumber++;
+    msg.totalPackets = 1;
+    msg.packetIndex = 0;
+    
+    // Payload: TargetID (8) + GroupName (N)
+    memcpy(msg.data, &targetId, sizeof(uint64_t));
+    strncpy((char*)msg.data + sizeof(uint64_t), groupName.c_str(), 229 - sizeof(uint64_t));
+    ((char*)msg.data)[229] = '\0'; // Safety
+    
+    msg.dataLength = sizeof(uint64_t) + strlen(groupName.c_str()) + 1;
+    
+    sendMessage(msg);
+    Serial.printf("Mesh: ASSIGN_GROUP broadcast complete\r\n");
+}
+
+void MeshNetworkManager::handleAssignGroup(const MeshMessage& msg) {
+    if (msg.dataLength < sizeof(uint64_t)) return;
+    
+    uint64_t targetId;
+    memcpy(&targetId, msg.data, sizeof(uint64_t));
+    
+    if (targetId == myId) {
+        char name[230];
+        strncpy(name, (char*)msg.data + sizeof(uint64_t), 230 - sizeof(uint64_t));
+        name[229] = '\0';
+        
+        Serial.printf("Mesh: Received ASSIGN_GROUP command. New Group: '%s'\r\n", name);
+        setGroupName(name);
+        
+        // TODO: Save to LittleFS using callback (SystemManager)
+        // We will implement this in SystemManager
+    }
+}
+
+// ==========================================
+// SYNC PARAM IMPLEMENTATION
+// ==========================================
+
+void MeshNetworkManager::broadcastSyncParam(const std::string& paramName, const std::string& jsonValue) {
+    if (myGroupName.empty()) return; // Don't broadcast if not in a group
+    
+    pendingParamSync.paramName = paramName;
+    pendingParamSync.jsonValue = jsonValue;
+    pendingParamSync.pending = true;
+}
+
+void MeshNetworkManager::doSendSyncParam(const std::string& paramName, const std::string& jsonValue) {
+    // Format: GroupName\0ParamName\0JsonValue
+    std::string payload = myGroupName;
+    payload += '\0';
+    payload += paramName;
+    payload += '\0';
+    payload += jsonValue;
+    
+    if (payload.length() > 230) {
+        Serial.println("Mesh: Sync Param payload too large!");
+        return;
+    }
+
+    MeshMessage msg;
+    msg.type = MessageType::SYNC_PARAM;
+    msg.senderId = myId;
+    msg.sequenceNumber = sequenceNumber++;
+    msg.totalPackets = 1;
+    msg.packetIndex = 0;
+    
+    memcpy(msg.data, payload.c_str(), payload.length());
+    msg.dataLength = payload.length();
+    
+    sendMessage(msg);
+    Serial.printf("Mesh: SYNC_PARAM broadcast complete for %s\r\n", paramName.c_str());
+}
+
+void MeshNetworkManager::handleSyncParam(const MeshMessage& msg) {
+    if (!animManager) return;
+    
+    const char* raw = (const char*)msg.data;
+    size_t len = msg.dataLength;
+    
+    // Parse: GroupName\0ParamName\0Value
+    // Check if group matches
+    std::string groupName = raw;
+    if (groupName != myGroupName || myGroupName.empty()) {
+        return; // Not for us
+    }
+    
+    if (groupName.length() + 1 >= len) return;
+    
+    std::string paramName = raw + groupName.length() + 1;
+    
+    if (groupName.length() + 1 + paramName.length() + 1 >= len) return;
+    
+    std::string jsonValueStr = raw + groupName.length() + 1 + paramName.length() + 1;
+    
+    // Apply param locally
+    Animation* current = animManager->getCurrentAnimation();
+    if (current) {
+        // We need to parse the JSON value.
+        // It's a string from the web: "123", "true", "\"#FF0000\"", "[...]"
+        // We can reuse logic or simple parsing.
+        // Using ArduinoJson here is safest if we have heap.
+        // Or passed string is raw value?
+        // WebManager passes whatever `doc["value"]` was.
+        
+        // Since we don't want to depend heavily on ArduinoJson everywhere if avoidable, but we need it.
+        // Let's assume passed string is JSON representation.
+        StaticJsonDocument<512> doc;
+        DeserializationError error = deserializeJson(doc, jsonValueStr);
+        if (!error) {
+             // Logic similar to WebManager setParam
+             if (doc.is<int>()) current->setParam(paramName.c_str(), doc.as<int>());
+             else if (doc.is<float>()) current->setParam(paramName.c_str(), doc.as<float>());
+             else if (doc.is<bool>()) current->setParam(paramName.c_str(), doc.as<bool>());
+             else if (doc.is<const char*>()) {
+                  const char* val = doc.as<const char*>();
+                   if (val && val[0] == '#' && strlen(val) == 7) {
+                       int r, g, b;
+                       if (sscanf(val + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+                           current->setParam(paramName.c_str(), CRGB(r, g, b));
+                       }
+                   }
+             }
+             // Dynamic Palette array logic omitted for brevity/complexity, can add if needed
+             else if (doc.is<JsonArray>()) {
+                    JsonArray arr = doc.as<JsonArray>();
+                    if (current->findParameter(paramName.c_str())->type == PARAM_DYNAMIC_PALETTE) {
+                       DynamicPalette newPal;
+                       for (JsonVariant v : arr) {
+                           const char* val = v.as<const char*>();
+                           if (val && val[0] == '#' && strlen(val) == 7) {
+                               int r, g, b;
+                               if (sscanf(val + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+                                   newPal.colors.push_back(CRGB(r, g, b));
+                               }
+                           }
+                       }
+                       if (newPal.colors.empty()) newPal.colors.push_back(CRGB::Black);
+                       current->setParam(paramName.c_str(), newPal);
+                    }
+             }
+        }
+    }
+}
+
+// ==========================================
+// SYNC POWER IMPLEMENTATION
+// ==========================================
+
+void MeshNetworkManager::broadcastSyncPower(bool powerOn) {
+    if (myGroupName.empty()) return;
+    
+    pendingPowerSync.powerOn = powerOn;
+    pendingPowerSync.pending = true;
+}
+
+void MeshNetworkManager::doSendSyncPower(bool powerOn) {
+    std::string payload = myGroupName;
+    payload += '\0';
+    payload += (powerOn ? "1" : "0");
+    
+    MeshMessage msg;
+    msg.type = MessageType::SYNC_POWER;
+    msg.senderId = myId;
+    msg.sequenceNumber = sequenceNumber++;
+    msg.totalPackets = 1;
+    msg.packetIndex = 0;
+    
+    memcpy(msg.data, payload.c_str(), payload.length());
+    msg.dataLength = payload.length();
+    
+    sendMessage(msg);
+    Serial.printf("Mesh: SYNC_POWER broadcast complete: %s\r\n", powerOn ? "ON" : "OFF");
+}
+
+void MeshNetworkManager::handleSyncPower(const MeshMessage& msg) {
+    if (!animManager) return;
+    
+    const char* raw = (const char*)msg.data;
+    size_t len = msg.dataLength;
+    
+    std::string groupName = raw;
+    if (groupName != myGroupName || myGroupName.empty()) return;
+    
+    if (groupName.length() + 1 >= len) return;
+    
+    // Value is "1" or "0"
+    char val = raw[groupName.length() + 1];
+    bool powerOn = (val == '1');
+    
+    if (animManager->getPower() != powerOn) {
+        Serial.printf("Mesh: syncing power %s\r\n", powerOn ? "ON" : "OFF");
+        animManager->setPower(powerOn);
     }
 }

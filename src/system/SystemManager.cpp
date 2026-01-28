@@ -1,4 +1,6 @@
 #include "system/SystemManager.h"
+#include <LittleFS.h>
+#include <ArduinoJson.h>
 
 SystemManager::SystemManager()
     : ledController(NUM_LEDS),
@@ -23,8 +25,17 @@ void SystemManager::begin() {
     wifi.begin();
     delay(1000);
 
+    // Initialize LittleFS if not already done by other components (safe to call multiple times?)
+    // Creating a safe init helper or just calling begin
+    if(!LittleFS.begin(true)){
+        Serial.println("LittleFS Mount Failed");
+    }
+
     Serial.println("Init: Mesh...");
     mesh.begin();
+    
+    Serial.println("Init: Loading Config...");
+    loadConfig();
     
     Serial.println("Init: Web...");
     web.begin();
@@ -60,6 +71,12 @@ void SystemManager::update() {
     wifi.update();
     ota.update();
     web.update();
+    
+    // Check for config changes
+    if (mesh.getGroupName() != lastSavedGroupName) {
+        saveConfig();
+    }
+    
     vTaskDelay(100 / portTICK_PERIOD_MS);
 }
 
@@ -101,4 +118,54 @@ void SystemManager::meshTask() {
         mesh.update();
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
+}
+
+// ==========================================
+// CONFIG PERSISTENCE
+// ==========================================
+
+void SystemManager::loadConfig() {
+    if (!LittleFS.exists("/config.json")) {
+        Serial.println("Config: No config file found, using defaults");
+        return;
+    }
+
+    File file = LittleFS.open("/config.json", "r");
+    if (!file) {
+        Serial.println("Config: Failed to open config file");
+        return;
+    }
+
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+
+    if (error) {
+        Serial.println("Config: Failed to parse config file");
+        return;
+    }
+
+    if (doc.containsKey("group")) {
+        std::string group = doc["group"].as<const char*>();
+        mesh.setGroupName(group);
+        lastSavedGroupName = group;
+        Serial.printf("Config: Loaded group '%s'\n", group.c_str());
+    }
+}
+
+void SystemManager::saveConfig() {
+    StaticJsonDocument<512> doc;
+    doc["group"] = mesh.getGroupName();
+
+    File file = LittleFS.open("/config.json", "w");
+    if (!file) {
+        Serial.println("Config: Failed to open config file for writing");
+        return;
+    }
+
+    serializeJson(doc, file);
+    file.close();
+    
+    lastSavedGroupName = mesh.getGroupName();
+    Serial.println("Config: Saved configuration");
 }

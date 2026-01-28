@@ -73,6 +73,10 @@ void WebManager::setupRoutes() {
                 
                 // Broadcast new params to WS clients
                 ws.textAll("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
+                
+                // Broadcast to Mesh (Group Sync)
+                // Use current time/millis? Start time logic is Todo, passing 0 for now.
+                meshManager.broadcastAnimationState(name, 0); 
             }
         }
     });
@@ -184,6 +188,41 @@ void WebManager::setupRoutes() {
     server.on("/api/mesh/peers", HTTP_GET, [this](AsyncWebServerRequest *request) {
         request->send(200, "application/json", getPeersJson());
     });
+
+    // API: Assign Group
+    server.on("/api/mesh/assign_group", HTTP_POST, [this](AsyncWebServerRequest *request) {}, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        StaticJsonDocument<256> doc;
+        DeserializationError error = deserializeJson(doc, data, len);
+        if (!error && doc.containsKey("id") && doc.containsKey("group")) {
+            const char* idStr = doc["id"];
+            const char* group = doc["group"];
+            
+            if (strcmp(idStr, "local") == 0) {
+                // Local assignment (should be rare if UI always uses IDs, but good for testing)
+                meshManager.setGroupName(group);
+                request->send(200, "application/json", "{\"status\":\"ok\"}");
+            } else {
+                // Remote assignment via Mesh
+                uint64_t targetId = strtoull(idStr, NULL, 16);
+                meshManager.broadcastAssignGroup(targetId, group);
+                request->send(200, "application/json", "{\"status\":\"broadcast_sent\"}");
+            }
+        } else {
+            request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        }
+    });
+
+    // API: Set My Group (Direct)
+    server.on("/api/mesh/my_group", HTTP_POST, [this](AsyncWebServerRequest *request) {}, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        StaticJsonDocument<256> doc;
+        DeserializationError error = deserializeJson(doc, data, len);
+        if (!error && doc.containsKey("group")) {
+            meshManager.setGroupName(doc["group"]);
+            request->send(200, "application/json", "{\"status\":\"ok\"}");
+        } else {
+              request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        }
+    });
     
     // Static Files (React App) - Must be last to avoid capturing API routes
     server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
@@ -292,21 +331,33 @@ void WebManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
                    }
                }
                
-               if (changed) {
+                if (changed) {
                    // Broadcast new params to all connected clients
                    ws.textAll("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
+                   
+                   // Broadcast to Mesh Group DISABLED for Frontend Sync
+                   // String jsonVal;
+                   // serializeJson(doc["value"], jsonVal);
+                   // meshManager.broadcastSyncParam(name, jsonVal.c_str());
                }
             }
         } else if (strcmp(cmd, "setAnimation") == 0) {
              const char* name = doc["name"];
              animManager.setAnimation(name);
              ws.textAll("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
+             
+             // Broadcast to Mesh Group DISABLED
+             // meshManager.broadcastAnimationState(name, 0);
         } else if (strcmp(cmd, "reboot") == 0) {
              ESP.restart();
         } else if (strcmp(cmd, "setPower") == 0) {
              bool p = doc["value"];
              animManager.setPower(p);
              ws.textAll("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
+             
+             // Broadcast to Mesh Group DISABLED
+             // meshManager.broadcastSyncPower(p);
+             
         } else if (strcmp(cmd, "checkOTA") == 0) {
              otaManager.forceCheck();
              meshManager.broadcastCheckForUpdates();
@@ -408,6 +459,7 @@ String WebManager::getPeersJson() {
     self["id"] = "local";
     self["ip"] = WiFi.localIP().toString();
     self["role"] = meshManager.isMaster() ? "MASTER" : "SLAVE";
+    self["group"] = meshManager.getGroupName();
     self["self"] = true;
 
     // Mesh Peers
@@ -419,6 +471,7 @@ String WebManager::getPeersJson() {
         obj["id"] = idStr;
         obj["ip"] = IPAddress(peer.ip).toString();
         obj["role"] = (peer.role == NodeState::MASTER) ? "MASTER" : "SLAVE";
+        obj["group"] = peer.groupName;
         obj["lastSeen"] = peer.lastSeen;
         obj["self"] = false;
     }
