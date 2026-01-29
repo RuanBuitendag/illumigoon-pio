@@ -11,6 +11,7 @@
 #include "animation/user_animations/BreathingAnimation.h"
 #include "animation/user_animations/AudioWaveAnimation.h"
 #include "animation/user_animations/KickReactionAnimation.h"
+#include "animation/user_animations/BouncingBallAnimation.h"
 
 // Define internal resources locally
 namespace {
@@ -38,6 +39,22 @@ namespace {
 
     const std::vector<CRGB> sinusoidalColors = {CRGB::Red, CRGB::DarkOrange, CRGB::Blue};
     const std::vector<CRGB> warmWhiteColors = {CRGB(255, 100, 20), CRGB(255, 100, 20), CRGB(255, 100, 20)};
+
+    DynamicPalette auroraPalette = {{
+        CRGB::DarkBlue,
+        CRGB::Teal,
+        CRGB::Green,
+        CRGB::Purple
+    }};
+
+    DynamicPalette bouncingBallPalette = {{
+        CRGB::Red,
+        CRGB::Green,
+        CRGB::Blue,
+        CRGB::Yellow,
+        CRGB::Purple,
+        CRGB::Orange
+    }};
 }
 
 void AnimationPresets::createAnimations(AnimationManager& manager) {
@@ -48,11 +65,12 @@ void AnimationPresets::createAnimations(AnimationManager& manager) {
     manager.registerBaseAnimation(new AudioWaveAnimation("AudioWave"));
     manager.registerBaseAnimation(new KickReactionAnimation("KickReaction"));
     manager.registerBaseAnimation(new LineAnimation("Line", 20, 90, CRGB(255, 30, 0), 10));
-    manager.registerBaseAnimation(new BreathingAnimation("Breathing", CRGB(255, 20, 0), 2000, 1000, 0, 255, 0, 2000, 0));
+    manager.registerBaseAnimation(new BreathingAnimation("Breathing", CRGB(255, 20, 0), 2000, 1000, 2000, 0));
     manager.registerBaseAnimation(new FireAnimation("Fire", standardFirePalette, 0.5f));
-    manager.registerBaseAnimation(new AuroraAnimation("Aurora", 54321));
+    manager.registerBaseAnimation(new AuroraAnimation("Aurora", auroraPalette, 54321));
     manager.registerBaseAnimation(new StarryNightAnimation("StarryNight", 15));
     manager.registerBaseAnimation(new SinusoidalLinesAnimation("SinusoidalLines", sinusoidalColors, 10, 1.0f, 5.0f, CRGB(30,30,30)));
+    manager.registerBaseAnimation(new BouncingBallAnimation("BouncingBall", bouncingBallPalette));
 
     // 2. Load existing presets
     manager.loadPresets();

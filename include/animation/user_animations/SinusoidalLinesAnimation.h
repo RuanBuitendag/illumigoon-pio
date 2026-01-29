@@ -25,7 +25,8 @@ public:
           lineLength(lineLength),
           minFrequency(minFreq),
           maxFrequency(maxFreq),
-          background(bg)
+          background(bg),
+          speed(1.0f)
     {
         // Initialize palette from constructor colors
         palette.colors = colours;
@@ -33,6 +34,7 @@ public:
         registerParameter("Line Length", &this->lineLength, 0, 90, 1, "Wave segment length");
         registerParameter("Background", &this->background, "Background color");
         registerParameter("Palette", &this->palette, "Line colors");
+        registerParameter("Speed", &this->speed, 0.1f, 5.0f, 0.1f, "Animation speed");
 
         // Initial population
         syncLines();
@@ -49,7 +51,7 @@ public:
             leds[i] = background;
         }
 
-        float t = epoch * 0.001f;
+        float t = epoch * 0.001f * speed;
 
         for (int i = 0; i < numLeds; i++) {
             uint16_t r = 0, g = 0, b = 0;
@@ -109,6 +111,7 @@ private:
     int lineLength;
     float minFrequency, maxFrequency;
     CRGB background;
+    float speed;
     DynamicPalette palette;
 
     static float randomFloat(float minVal, float maxVal) {

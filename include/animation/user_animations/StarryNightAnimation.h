@@ -13,7 +13,19 @@ public:
         }
         
         stars = new Star[numStars];
+
+        // Default Background: Deep Blue Gradient
+        bgPalette.colors.push_back(CRGB(0, 0, 0));
+        bgPalette.colors.push_back(CRGB(0, 0, 20));
+        bgPalette.colors.push_back(CRGB(0, 5, 30));
+
+        // Default Stars: White/Blueish
+        starPalette.colors.push_back(CRGB::White);
+        starPalette.colors.push_back(CRGB(200, 200, 255));
+        
         registerParameter("Speed", &this->speed, 0.0f, 5.0f, 0.01f, "Twinkle speed");
+        registerParameter("Background", &this->bgPalette, "Sky gradient");
+        registerParameter("Stars", &this->starPalette, "Star colors");
     }
 
     std::string getTypeName() const override { return "StarryNight"; }
@@ -30,21 +42,38 @@ public:
                 stars[i].phase = random(628) / 100.0f;
                 stars[i].speed = 0.02f + (random(30) / 1000.0f);
                 stars[i].brightness = 128 + random(127);
+                // Assign a random color index from palette? Or sample?
+                // Let's store a normalized 0-1 val for color lookup
+                stars[i].colorIndex = (float)random(100) / 100.0f; 
             }
             initialized = true;
         }
 
         float skyWave = sin(epoch * 0.005f) * 0.1f + 0.9f;
 
+        // Render Background Gradient
         for (int i = 0; i < numLeds; i++) {
-            float gradient = i / (float)numLeds;
-            leds[i] = CRGB(
-                0,
-                (uint8_t)(5 * gradient),
-                (uint8_t)((20 + 10 * gradient) * skyWave)
-            );
+            float gradientPos = i / (float)(numLeds - 1);
+            if (bgPalette.colors.empty()) {
+                leds[i] = CRGB::Black;
+            } else if (bgPalette.colors.size() == 1) {
+                leds[i] = bgPalette.colors[0];
+            } else {
+                float scaled = gradientPos * (bgPalette.colors.size() - 1);
+                int idx = (int)scaled;
+                float frac = scaled - idx;
+                
+                CRGB c1 = bgPalette.colors[idx];
+                CRGB c2 = (idx + 1 < bgPalette.colors.size()) ? bgPalette.colors[idx+1] : c1;
+                
+                CRGB bg = blend(c1, c2, (uint8_t)(frac * 255));
+                leds[i] = bg; // Apply brightness modulation?
+                // Scale brightness by skyWave to keep the original pulsing effect
+                leds[i].nscale8((uint8_t)(skyWave * 255)); 
+            }
         }
 
+        // Render Stars
         for (int i = 0; i < numStars; i++) {
             stars[i].phase += stars[i].speed * speed;
             if (stars[i].phase > 6.28f) {
@@ -56,11 +85,22 @@ public:
             
             uint8_t starBrightness = (uint8_t)(twinkle * stars[i].brightness);
 
-            CRGB starColor = CRGB(
-                starBrightness,
-                starBrightness * 0.95f,
-                starBrightness * 0.85f
-            );
+            // Fetch Star Color
+            CRGB starColor = CRGB::White;
+            if (!starPalette.colors.empty()) {
+                if (starPalette.colors.size() == 1) {
+                    starColor = starPalette.colors[0];
+                } else {
+                    float scaled = stars[i].colorIndex * (starPalette.colors.size() - 1);
+                     int idx = (int)scaled;
+                    float frac = scaled - idx;
+                    CRGB c1 = starPalette.colors[idx];
+                    CRGB c2 = (idx + 1 < starPalette.colors.size()) ? starPalette.colors[idx+1] : c1;
+                    starColor = blend(c1, c2, (uint8_t)(frac * 255));
+                }
+            }
+            
+            starColor.nscale8(starBrightness);
 
             int pos = stars[i].position;
             leds[pos] += starColor;
@@ -90,6 +130,7 @@ private:
         float phase;
         float speed;
         uint8_t brightness;
+        float colorIndex;
     };
 
     mutable Star* stars;
@@ -97,6 +138,8 @@ private:
     uint16_t seed;
     mutable bool initialized;
     float speed;
+    DynamicPalette bgPalette;
+    DynamicPalette starPalette;
 };
 
 #endif

@@ -7,19 +7,16 @@
 class BreathingAnimation : public Animation {
 public:
     BreathingAnimation(const std::string& name, CRGB colour, 
-                       int attack, int hold, int decay, uint8_t sustainLevel, int sustainTime, int release, int rest)
+                       int attack, int hold, int release, int rest, uint8_t minBrightness = 0)
         : Animation(name), colour(colour), 
-          attack(attack), hold(hold), decay(decay), sustainLevel(sustainLevel), 
-          sustainTime(sustainTime), release(release), rest(rest)
+          attack(attack), hold(hold), release(release), rest(rest), minBrightness(minBrightness)
     {
         registerParameter("Colour", &this->colour, "Main color");
         registerParameter("Attack", &this->attack, 0, 5000, 1, "Fade-in duration (ms)");
         registerParameter("Hold", &this->hold, 0, 5000, 1, "Max brightness duration (ms)");
-        registerParameter("Decay", &this->decay, 0, 5000, 1, "Fade to sustain duration (ms)");
-        registerParameter("Sustain Lvl", &this->sustainLevel, 0, 255, 1, "Brightness level during sustain");
-        registerParameter("Sustain T", &this->sustainTime, 0, 5000, 1, "Sustain duration (ms)");
         registerParameter("Release", &this->release, 0, 5000, 1, "Fade-out duration (ms)");
-        registerParameter("Rest", &this->rest, 0, 5000, 1, "Off duration (ms)");
+        registerParameter("Rest", &this->rest, 0, 5000, 1, "Min brightness duration (ms)");
+        registerParameter("Min Brightness", &this->minBrightness, 0, 255, 1, "Base brightness level");
     }
 
     std::string getTypeName() const override { return "Breathing"; }
@@ -29,7 +26,7 @@ public:
         // epoch is 10ms ticks
         uint32_t timeMs = epoch * 10;
         
-        int totalCycle = attack + hold + decay + sustainTime + release + rest;
+        int totalCycle = attack + hold + release + rest;
         if (totalCycle == 0) totalCycle = 1;
 
         int cyclePos = timeMs % totalCycle;
@@ -41,10 +38,11 @@ public:
         };
 
         if (cyclePos < attack) {
-            // Attack: 0 -> 255
+            // Attack: minBrightness -> 255
             if (attack > 0) {
                 float t = (float)cyclePos / attack;
-                brightness = (uint8_t)(easeInOut(t) * 255.0f);
+                float val = minBrightness + (255.0f - minBrightness) * easeInOut(t);
+                brightness = (uint8_t)val;
             } else {
                 brightness = 255;
             }
@@ -53,37 +51,21 @@ public:
             // Hold: 255
             brightness = 255;
         } 
-        else if (cyclePos < (attack + hold + decay)) {
-            // Decay: 255 -> SustainLevel
+        else if (cyclePos < (attack + hold + release)) {
+            // Release: 255 -> minBrightness
             int p = cyclePos - (attack + hold);
-            if (decay > 0) {
-                float t = (float)p / decay; // 0.0 to 1.0
-                // Interpolate 255 -> sustain
-                float val = 255.0f + (sustainLevel - 255.0f) * easeInOut(t);
-                brightness = (uint8_t)val;
-            } else {
-                brightness = sustainLevel;
-            }
-        } 
-        else if (cyclePos < (attack + hold + decay + sustainTime)) {
-            // Sustain: SustainLevel
-            brightness = sustainLevel;
-        } 
-        else if (cyclePos < (attack + hold + decay + sustainTime + release)) {
-            // Release: SustainLevel -> 0
-            int p = cyclePos - (attack + hold + decay + sustainTime);
             if (release > 0) {
                 float t = (float)p / release;
-                // Interpolate sustain -> 0
-                float val = sustainLevel + (0.0f - sustainLevel) * easeInOut(t);
+                // Interpolate 255 -> minBrightness
+                float val = 255.0f + (minBrightness - 255.0f) * easeInOut(t);
                 brightness = (uint8_t)val;
             } else {
-                brightness = 0;
+                brightness = minBrightness;
             }
         } 
         else {
-            // Rest: 0
-            brightness = 0;
+            // Rest: minBrightness
+            brightness = minBrightness;
         }
 
         CRGB pixelColor = colour;
@@ -103,11 +85,9 @@ private:
     CRGB colour;
     int attack;         // ms
     int hold;           // ms
-    int decay;          // ms
-    uint8_t sustainLevel; // 0-255
-    int sustainTime;    // ms
     int release;        // ms
     int rest;           // ms
+    uint8_t minBrightness; // 0-255
 };
 
 #endif

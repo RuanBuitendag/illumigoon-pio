@@ -7,11 +7,15 @@
 class LineAnimation : public Animation {
 public:
     LineAnimation(const std::string& name, int lineLength, int spacing, CRGB colour, int speed)
-        : Animation(name), lineLength(lineLength), spacing(spacing), colour(colour), speed(speed)
+        : Animation(name), lineLength(lineLength), spacing(spacing), speed(speed)
     {
+        // Initialize default gradient from single color if needed, or just set a default
+        gradientPalette.colors.push_back(colour);
+        gradientPalette.colors.push_back(colour); // Consistent solid color by default
+
         registerParameter("Line Length", &this->lineLength, 0, 90, 1, "Length of segments");
         registerParameter("Spacing", &this->spacing, 0, 90, 1, "Distance between segments");
-        registerParameter("Colour", &this->colour, "Line color");
+        registerParameter("Gradient", &this->gradientPalette, "Color gradient");
         registerParameter("Speed", &this->speed, 0, 100, 1, "Animation speed multiplier");
     }
 
@@ -23,28 +27,35 @@ public:
         int cycle = lineLength + spacing;
         if (cycle == 0) cycle = 1; // Prevent divide by zero
 
-        // Calculate offset based on time and speed
-        // epoch is 60Hz (approx 16ms), speed is likely 0-255? or arbitrary.
-        // Let's assume speed is pixels per second or similar scaler.
-        // Actually, let's just make it a multiplier for the epoch.
-        // If speed is 10, offset increases by 10 every tick? That's fast.
-        // Let's try: offset = (epoch * speed) / 10;
-        // Or if speed is just an arbitrary rate parameter.
         int offset = (epoch * speed) / 10; 
 
         for (int i = 0; i < numLeds; i++) {
-            // Calculate effective position in the cycle
-            // We want the line to move "forward" (index 0 to N) or "backward"?
-            // Usually valid to have it move 0->N. 
-            // Position in cycle = (pixel_index - offset) % cycle.
-            // Using (pixel_index + offset) makes it move left-to-right or right-to-left depending on perspective.
-            
-            // Let's use (i - offset) to move 'right' (0 -> N) effectively shifting pattern 'right'.
             int pos = (i - offset) % cycle;
             if (pos < 0) pos += cycle;
 
             if (pos < lineLength) {
-                leds[i] = colour;
+                // Map pixel index to gradient (0.0 to 1.0 along the strip)
+                float gradientPos = (float)i / (float)(numLeds - 1);
+                
+                // Get color from palette
+                if (gradientPalette.colors.empty()) {
+                    leds[i] = CRGB::White;
+                } else if (gradientPalette.colors.size() == 1) {
+                    leds[i] = gradientPalette.colors[0];
+                } else {
+                    // Linear interpolation
+                    float scaled = gradientPos * (gradientPalette.colors.size() - 1);
+                    int idx = (int)scaled;
+                    float frac = scaled - idx;
+                    
+                    if (idx >= gradientPalette.colors.size() - 1) {
+                        leds[i] = gradientPalette.colors.back();
+                    } else {
+                        CRGB c1 = gradientPalette.colors[idx];
+                        CRGB c2 = gradientPalette.colors[idx + 1];
+                        leds[i] = blend(c1, c2, (uint8_t)(frac * 255));
+                    }
+                }
             } else {
                 leds[i] = CRGB::Black;
             }
@@ -54,7 +65,7 @@ public:
 private:
     int lineLength;
     int spacing;
-    CRGB colour;
+    DynamicPalette gradientPalette;
     int speed;
 };
 

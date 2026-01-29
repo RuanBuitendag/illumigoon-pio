@@ -6,20 +6,30 @@
 
 class AuroraAnimation : public Animation {
 public:
-    AuroraAnimation(const std::string& name, int seed = 0)
-        : Animation(name), seed(seed) {
+    AuroraAnimation(const std::string& name, const DynamicPalette& palette, int seed = 0, float speed = 1.0f, bool reverse = false)
+        : Animation(name), palette(palette), seed(seed), speed(speed), reverse(reverse) {
         if (seed == 0) {
             this->seed = random(65535);
         }
-        registerParameter("Seed", &this->seed, 0, 65535, 1, "Pattern random seed");
+        // Seed parameter is intentionally hidden (internal usage only)
+        registerParameter("Palette", &this->palette, "Aurora colors");
+        registerParameter("Speed", &this->speed, 0.1f, 5.0f, 0.1f, "Animation speed");
+        registerParameter("Direction", &this->reverse, "Reverse direction");
     }
 
     std::string getTypeName() const override { return "Aurora"; }
 
     void render(uint32_t epoch, CRGB* leds, int numLeds) const override {
-
         // Very slow time progression for calming effect
-        float time = epoch * 0.01f;
+        // Apply speed scaling
+        float time = epoch * 0.01f * speed;
+        
+        // Reverse direction if enabled
+        if (reverse) {
+            time = -time;
+        }
+
+        CRGBPalette16 p = palette.toPalette16();
 
         for (int i = 0; i < numLeds; i++) {
             // Create multiple overlapping waves at different scales
@@ -42,41 +52,54 @@ public:
             intensity = intensity * intensity; // Square for softer gradient
             
             // Create color shift along the strip (aurora color transition)
-            float hueShift = pos * 60.0f + time * 5.0f; // Slow color drift
+            // Use the wave position and time to sample from the palette
             
-            // Aurora color palette: blue-green-cyan range (120-180 on HSV)
-            // With occasional violet hints (200-220)
-            float baseHue = 140.0f + sin(time * 0.2f + pos * 2.0f) * 30.0f;
+            // Original logic used hue shift logic:
+            // float hueShift = pos * 60.0f + time * 5.0f; 
+            // baseHue = 140.0f + sin(...) ...
             
-            // Add subtle purple/violet accents
+            // New logic: Map these dynamic factors to a palette index (0-255)
+            // We want the color to drift slowly (time) and vary along the strip (pos)
+            // and react to the waves.
+            
+            float colorIndex = (pos * 50.0f) + (time * 2.0f); // Base drift
+            colorIndex += sin(time * 0.2f + pos * 2.0f) * 30.0f; // Undulation
+            
+            // Add subtle variation from the fast wave
             if (wave3 > 0.7f) {
-                baseHue = 200.0f + wave3 * 20.0f;
+                colorIndex += wave3 * 20.0f;
             }
             
-            // Create the aurora color with high saturation
-            CHSV hsvColor(
-                (uint8_t)(baseHue + hueShift),
-                220 - (intensity * 40), // Vary saturation slightly
-                (uint8_t)(intensity * 255 * 0.8f) // Keep brightness moderate for calmness
-            );
+            // Sample from palette
+            CRGB color = ColorFromPalette(p, (uint8_t)colorIndex);
             
-            leds[i] = hsvColor;
+            // Apply intensity/brightness
+            // Original used HSV value 220 - (intensity * 40), then multiplied by 0.8f
+            // We can just scale the RGB color
+            uint8_t brightness = (uint8_t)(intensity * 255 * 0.8f);
+            leds[i] = color.nscale8_video(brightness);
             
             // Add occasional bright "peaks" in the aurora
             float peak = sin((pos * 3.0f + time * 0.4f) * PI);
             if (peak > 0.85f) {
                 float peakBrightness = (peak - 0.85f) * 6.67f; // 0 to 1 range
-                leds[i] += CRGB(
-                    peakBrightness * 50,
-                    peakBrightness * 80,
-                    peakBrightness * 60
-                );
+                
+                // For peaks, we can brighten the existing color or add white/gold
+                // Let's bias towards the palette but brighter, or just add white for sparkle
+                CRGB peakColor = ColorFromPalette(p, (uint8_t)(colorIndex + 128)); // Complementary-ish/Shifted
+                // Or just white for classic shimmer
+                peakColor = CRGB::White;
+
+                leds[i] += peakColor.nscale8_video((uint8_t)(peakBrightness * 80));
             }
         }
     }
 
 private:
+    mutable DynamicPalette palette;
     int seed;
+    float speed;
+    bool reverse;
 };
 
 #endif
