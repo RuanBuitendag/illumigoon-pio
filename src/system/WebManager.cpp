@@ -60,9 +60,8 @@ void WebManager::setupRoutes() {
 
     // API: Set Animation
     server.on("/api/animation", HTTP_POST, [this](AsyncWebServerRequest *request) {
-        // Body handled in handler... requires AsyncWebServerRequest::onBody equivalent or polling params
+        // Body handled in handler... 
     }, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        // Handle body
         StaticJsonDocument<200> doc;
         DeserializationError error = deserializeJson(doc, data, len);
         if (!error) {
@@ -71,11 +70,11 @@ void WebManager::setupRoutes() {
                 animManager.setAnimation(name);
                 request->send(200, "application/json", "{\"status\":\"ok\"}");
                 
-                // Broadcast new params to WS clients
+                // Broadcast to WS
                 ws.textAll("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
+                ws.textAll("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
                 
-                // Broadcast to Mesh (Group Sync)
-                // Use current time/millis? Start time logic is Todo, passing 0 for now.
+                // Broadcast to Mesh
                 meshManager.broadcastAnimationState(name, 0); 
             }
         }
@@ -83,43 +82,33 @@ void WebManager::setupRoutes() {
 
     // API: Save Preset
     server.on("/api/savePreset", HTTP_POST, [this](AsyncWebServerRequest *request) {}, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        // Safety check for chunked uploads or partial data
-        if (total > len) {
-            request->send(400, "application/json", "{\"error\":\"Payload too large / Chunked upload not supported\"}");
-            return;
-        }
-
-        DynamicJsonDocument doc(1200); // Heap allocation
+        if (total > len) { request->send(400, "application/json", "{\"error\":\"Payload too large\"}"); return; }
+        
+        DynamicJsonDocument doc(1200); 
         DeserializationError error = deserializeJson(doc, data, len);
         
-        if (!error) {
+        if (!error && doc.containsKey("name") && doc.containsKey("baseType")) {
             const char* name = doc["name"];
             const char* baseType = doc["baseType"];
-            if (name && baseType) {
-                if (animManager.savePreset(name, baseType)) {
-                    // Success locally. Now broadcast.
-                   
-                    // Read file to ensure consistency and get params
-                    std::string path = "/presets/" + std::string(name) + ".json";
-                    File f = LittleFS.open(path.c_str(), FILE_READ);
-                    if (f) {
-                        DynamicJsonDocument pDoc(2048); // Heap allocation
-                        deserializeJson(pDoc, f);
-                        f.close();
-                        
-                        String paramsJson;
-                        serializeJson(pDoc["params"], paramsJson);
-                        
-                        // c_str() validity: valid until paramsJson is destroyed at end of scope
-                        meshManager.broadcastSavePreset(name, baseType, paramsJson.c_str());
-                    }
-
-                    request->send(200, "application/json", "{\"status\":\"saved\"}");
-                } else {
-                    request->send(500, "application/json", "{\"error\":\"Save failed\"}");
+            if (animManager.savePreset(name, baseType)) {
+                // Mesh Broadcast
+                std::string path = "/presets/" + std::string(name) + ".json";
+                File f = LittleFS.open(path.c_str(), FILE_READ);
+                if (f) {
+                    DynamicJsonDocument pDoc(2048); 
+                    deserializeJson(pDoc, f);
+                    f.close();
+                    String paramsJson;
+                    serializeJson(pDoc["params"], paramsJson);
+                    meshManager.broadcastSavePreset(name, baseType, paramsJson.c_str());
                 }
+                
+                // WS Broadcast
+                ws.textAll("{\"event\":\"animations\", \"data\":" + getAnimationsJson() + "}");
+
+                request->send(200, "application/json", "{\"status\":\"saved\"}");
             } else {
-                request->send(400, "application/json", "{\"error\":\"Missing name or baseType\"}");
+                request->send(500, "application/json", "{\"error\":\"Save failed\"}");
             }
         } else {
             request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
@@ -134,16 +123,14 @@ void WebManager::setupRoutes() {
             const char* oldName = doc["oldName"];
             const char* newName = doc["newName"];
             if (animManager.renamePreset(oldName, newName)) {
-                
-                // Broadcast Rename
                 meshManager.broadcastRenamePreset(oldName, newName);
-
+                ws.textAll("{\"event\":\"animations\", \"data\":" + getAnimationsJson() + "}");
                 request->send(200, "application/json", "{\"status\":\"renamed\"}");
             } else {
                 request->send(500, "application/json", "{\"error\":\"Rename failed\"}");
             }
         } else {
-            request->send(400, "application/json", "{\"error\":\"Invalid JSON or missing fields\"}");
+            request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
         }
     });
 
@@ -155,6 +142,7 @@ void WebManager::setupRoutes() {
             const char* name = doc["name"];
             if (animManager.deletePreset(name)) {
                 meshManager.broadcastDeletePreset(name);
+                ws.textAll("{\"event\":\"animations\", \"data\":" + getAnimationsJson() + "}");
                 request->send(200, "application/json", "{\"status\":\"deleted\"}");
             } else {
                 request->send(500, "application/json", "{\"error\":\"Delete failed\"}");
@@ -163,8 +151,8 @@ void WebManager::setupRoutes() {
             request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
         }
     });
-    
-    // API: Check Preset Exists (Mesh Query)
+
+    // API: Check Preset Exists
     server.on("/api/checkPreset", HTTP_GET, [this](AsyncWebServerRequest *request) {
         if (request->hasParam("name")) {
             String name = request->getParam("name")->value();
@@ -177,7 +165,7 @@ void WebManager::setupRoutes() {
              request->send(400, "application/json", "{\"error\":\"Missing name param\"}");
         }
     });
-    
+
     // API: Export Presets
     server.on("/api/presets/export", HTTP_GET, [this](AsyncWebServerRequest *request) {
          std::string json = animManager.getAllPresetsJson();
@@ -198,11 +186,9 @@ void WebManager::setupRoutes() {
             const char* group = doc["group"];
             
             if (strcmp(idStr, "local") == 0) {
-                // Local assignment (should be rare if UI always uses IDs, but good for testing)
                 meshManager.setGroupName(group);
                 request->send(200, "application/json", "{\"status\":\"ok\"}");
             } else {
-                // Remote assignment via Mesh
                 uint64_t targetId = strtoull(idStr, NULL, 16);
                 meshManager.broadcastAssignGroup(targetId, group);
                 request->send(200, "application/json", "{\"status\":\"broadcast_sent\"}");
@@ -224,9 +210,7 @@ void WebManager::setupRoutes() {
         }
     });
 
-
-
-    // API: Trigger OTA Check
+    // API: Trigger OTA Check (Legacy/Backup)
     server.on("/api/ota/check", HTTP_POST, [this](AsyncWebServerRequest *request) {
         Serial.println("API: Triggering OTA check");
         otaManager.forceCheck();
@@ -277,19 +261,38 @@ void WebManager::onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
     } else if (type == WS_EVT_DISCONNECT) {
         Serial.printf("WS Client #%u disconnected\r\n", client->id());
     } else if (type == WS_EVT_DATA) {
-        handleWebSocketMessage(arg, data, len);
+        handleWebSocketMessage(client, arg, data, len);
     }
 }
 
-void WebManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
+void WebManager::handleWebSocketMessage(AsyncWebSocketClient *client, void *arg, uint8_t *data, size_t len) {
     AwsFrameInfo *info = (AwsFrameInfo*)arg;
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
-        StaticJsonDocument<512> doc;
+        StaticJsonDocument<1024> doc; // Increased for larger payloads if needed
         DeserializationError error = deserializeJson(doc, data, len);
         if (error) return;
 
         const char* cmd = doc["cmd"];
-        if (strcmp(cmd, "setParam") == 0) {
+
+        // --- READ COMMANDS (Unicast to Client) ---
+        if (strcmp(cmd, "getStatus") == 0) {
+            client->text("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
+        } 
+        else if (strcmp(cmd, "getAnimations") == 0) {
+            client->text("{\"event\":\"animations\", \"data\":" + getAnimationsJson() + "}");
+        }
+        else if (strcmp(cmd, "getBaseAnimations") == 0) {
+            client->text("{\"event\":\"baseAnimations\", \"data\":" + getBaseAnimationsJson() + "}");
+        }
+        else if (strcmp(cmd, "getParams") == 0) {
+            client->text("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
+        }
+        else if (strcmp(cmd, "getPeers") == 0) {
+            client->text("{\"event\":\"peers\", \"data\":" + getPeersJson() + "}");
+        }
+
+        // --- WRITE COMMANDS (Broadcast to All + Mesh) ---
+        else if (strcmp(cmd, "setParam") == 0) {
             const char* name = doc["name"];
             Animation* current = animManager.getCurrentAnimation();
             bool changed = false;
@@ -345,19 +348,22 @@ void WebManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
                    // Broadcast new params to all connected clients
                    ws.textAll("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
                    
-                   // Broadcast to Mesh Group DISABLED for Frontend Sync
-                   // String jsonVal;
-                   // serializeJson(doc["value"], jsonVal);
-                   // meshManager.broadcastSyncParam(name, jsonVal.c_str());
+                   // Broadcast to Mesh Group DISABLED for Frontend Sync (as per user request previously, they might want it back?)
+                   // Current logic: Frontend sends to each device individually via WS if needed.
+                   // Actually, for setParam, we usually want group sync if it's a "Group" action.
+                   // But "setParam" from UI is usually device specific target.
+                   // Let's keep mesh broadcast DISABLED here for now as established.
                }
             }
-        } else if (strcmp(cmd, "setAnimation") == 0) {
+        } 
+        else if (strcmp(cmd, "setAnimation") == 0) {
              const char* name = doc["name"];
              animManager.setAnimation(name);
              ws.textAll("{\"event\":\"params\", \"data\":" + getParamsJson() + "}");
+             ws.textAll("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
              
-             // Broadcast to Mesh Group DISABLED
-             // meshManager.broadcastAnimationState(name, 0);
+             // Broadcast to Mesh Group (Now enabled!)
+             meshManager.broadcastAnimationState(name, 0);
         } else if (strcmp(cmd, "reboot") == 0) {
              ESP.restart();
         } else if (strcmp(cmd, "setPower") == 0) {
@@ -365,8 +371,8 @@ void WebManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
              animManager.setPower(p);
              ws.textAll("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
              
-             // Broadcast to Mesh Group DISABLED
-             // meshManager.broadcastSyncPower(p);
+             // Broadcast to Mesh Group
+             meshManager.broadcastSyncPower(p);
              
         } else if (strcmp(cmd, "checkOTA") == 0) {
              otaManager.forceCheck();
@@ -376,17 +382,72 @@ void WebManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
              animManager.setDevicePhase(phase);
              // Echo back status to THIS client (and others connected to THIS device)
              // We use textAll because multiple tabs might be open to this Single device.
-             // We do NOT broadcast to mesh.
              ws.textAll("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
+        }
+
+        // --- PRESET OPERATIONS ---
+        else if (strcmp(cmd, "savePreset") == 0) {
+            const char* name = doc["name"];
+            const char* baseType = doc["baseType"];
+            if (name && baseType) {
+                if (animManager.savePreset(name, baseType)) {
+                    // Success locally.
+                    
+                    // Mesh Broadcast
+                    std::string path = "/presets/" + std::string(name) + ".json";
+                    File f = LittleFS.open(path.c_str(), FILE_READ);
+                    if (f) {
+                        DynamicJsonDocument pDoc(2048); 
+                        deserializeJson(pDoc, f);
+                        f.close();
+                        String paramsJson;
+                        serializeJson(pDoc["params"], paramsJson);
+                        meshManager.broadcastSavePreset(name, baseType, paramsJson.c_str());
+                    }
+
+                    // Broadcast updated list to UI
+                    ws.textAll("{\"event\":\"animations\", \"data\":" + getAnimationsJson() + "}");
+                }
+            }
+        }
+        else if (strcmp(cmd, "renamePreset") == 0) {
+            const char* oldName = doc["oldName"];
+            const char* newName = doc["newName"];
+            if (oldName && newName) {
+                if (animManager.renamePreset(oldName, newName)) {
+                    meshManager.broadcastRenamePreset(oldName, newName);
+                    ws.textAll("{\"event\":\"animations\", \"data\":" + getAnimationsJson() + "}");
+                }
+            }
+        }
+        else if (strcmp(cmd, "deletePreset") == 0) {
+            const char* name = doc["name"];
+            if (name) {
+                if (animManager.deletePreset(name)) {
+                    meshManager.broadcastDeletePreset(name);
+                    ws.textAll("{\"event\":\"animations\", \"data\":" + getAnimationsJson() + "}");
+                }
+            }
+        }
+        else if (strcmp(cmd, "assignGroup") == 0) {
+             const char* idStr = doc["id"];
+             const char* group = doc["group"];
+             if (idStr && group) {
+                 if (strcmp(idStr, "local") == 0) {
+                     meshManager.setGroupName(group);
+                 } else {
+                     uint64_t targetId = strtoull(idStr, NULL, 16);
+                     meshManager.broadcastAssignGroup(targetId, group);
+                 }
+                 // Wait a bit? Or just broadcast peers. Assigning group takes time to propagate.
+                 // Let's just broadcast peers immediately, though the remote might not have updated yet.
+             }
         }
     }
 }
 
-
-
-
 String WebManager::getSystemStatusJson() {
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<512> doc;
     doc["uptime"] = millis();
     doc["heap"] = ESP.getFreeHeap();
     doc["animation"] = animManager.getCurrentAnimationName();
