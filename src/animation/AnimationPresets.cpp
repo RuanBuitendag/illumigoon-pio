@@ -5,6 +5,7 @@
 // Include all user animations
 #include "animation/user_animations/LineAnimation.h"
 #include "animation/user_animations/AuroraAnimation.h"
+
 #include "animation/user_animations/FireAnimation.h"
 #include "animation/user_animations/StarryNightAnimation.h"
 #include "animation/user_animations/SinusoidalLinesAnimation.h"
@@ -64,7 +65,7 @@ void AnimationPresets::createAnimations(AnimationManager& manager) {
     
     manager.registerBaseAnimation(new AudioWaveAnimation("AudioWave"));
     manager.registerBaseAnimation(new KickReactionAnimation("KickReaction"));
-    manager.registerBaseAnimation(new LineAnimation("Line", 20, 90, CRGB(255, 30, 0), 10));
+    manager.registerBaseAnimation(new LineAnimation("Line", 20, 90, CRGB(255, 30, 0), 5.0f));
     manager.registerBaseAnimation(new BreathingAnimation("Breathing", CRGB(255, 20, 0), 2000, 1000, 2000, 0));
     manager.registerBaseAnimation(new FireAnimation("Fire", standardFirePalette, 0.5f));
     manager.registerBaseAnimation(new AuroraAnimation("Aurora", auroraPalette, 54321));

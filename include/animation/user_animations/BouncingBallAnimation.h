@@ -15,13 +15,16 @@ struct Ball {
 class BouncingBallAnimation : public Animation {
 public:
     BouncingBallAnimation(const std::string& name, const DynamicPalette& palette, int numBalls = 3, float speed = 1.0f, float bounciness = 0.8f)
-        : Animation(name), palette(palette), speed(speed), bounciness(bounciness), numBalls(numBalls), gravity(9.8f) {
+        : Animation(name), palette(palette), speed(speed), bounciness(bounciness), numBalls(numBalls), gravity(9.8f), directionUp(false), ballSize(1) {
             
             // Register parameters
-            registerParameter("Speed", &this->speed, 0.1f, 5.0f, 0.1f, "Simulation speed");
+            registerParameter("Speed", &this->speed, 0.1f, 10.0f, 0.5f, "Simulation speed");
             registerParameter("Bounciness", &this->bounciness, 0.1f, 1.2f, 0.05f, "Bounce elasticity");
             registerParameter("Num Balls", &this->numBalls, 1, 20, 1, "Number of balls");
+            registerParameter("Ball Size", &this->ballSize, 1, 10, 1, "Size of the balls");
+            registerParameter("Direction Up", &this->directionUp, "Fall direction (Up/Down)");
             registerParameter("Palette", &this->palette, "Ball colors");
+            registerParameter("Background", &this->backgroundPalette, "Background gradient");
             
             // Initialize balls
             resizeBalls();
@@ -45,8 +48,17 @@ public:
         // Convert to seconds
         float dt = (dtMs / 1000.0f) * speed;
 
-        // Clear LEDs
-        for(int i=0; i<numLeds; i++) leds[i] = CRGB::Black;
+        // Render Background
+        CRGBPalette16 bgPal = backgroundPalette.toPalette16();
+        if (backgroundPalette.colors.empty()) {
+             for(int i=0; i<numLeds; i++) leds[i] = CRGB::Black;
+        } else {
+             for(int i=0; i<numLeds; i++) {
+                 // Map pixel index to gradient (0.0 to 1.0 along the strip)
+                 uint8_t gradientPos = (i * 255) / (numLeds - 1);
+                 leds[i] = ColorFromPalette(bgPal, gradientPos);
+             }
+        }
         
         CRGBPalette16 pal = palette.toPalette16();
 
@@ -58,43 +70,60 @@ public:
             }
 
             // Update Physics
-            ball.velocity += gravity * dt * 10.0f; // Scale gravity for effect
+            float currentGravity = directionUp ? -gravity : gravity;
+            ball.velocity += currentGravity * dt * 10.0f; // Scale gravity for effect
             ball.position += ball.velocity * dt;
 
-            // Collision with bottom (end of strip)
-            // Assuming 0 is top and numLeds is bottom, or vice versa?
-            // "spawn balls from the top and makes them bounce on the bottom"
-            // Let's assume index 0 is top, numLeds-1 is bottom.
-            // Gravity pulls towards positive index.
-            
-            if (ball.position >= numLeds - 1) {
-                ball.position = numLeds - 1;
-                ball.velocity *= -ball.bounciness;
-                
-                // Add some damping to prevent infinite tiny bounces
-                if (fabs(ball.velocity) < 0.5f) {
-                     ball.velocity = 0;
-                     // Respawn if it stopped bouncing? or let it sit?
-                     // "spawns balls" implies a stream or cycle.
-                     // Let's respawn if it stops or after some time.
-                     if (fabs(ball.velocity) < 0.1f) {
-                         // Mark for respawn (maybe delay?)
-                         // For now, simple logic: if it settles at bottom, respawn at top
-                         spawnBall(ball, numLeds, pal);
-                     }
+            // Collision logic
+            if (!directionUp) {
+                // Falling down (0 -> numLeds)
+                if (ball.position >= numLeds - 1) {
+                    ball.position = numLeds - 1;
+                    ball.velocity *= -ball.bounciness;
+                    
+                    if (fabs(ball.velocity) < 0.5f) {
+                         ball.velocity = 0;
+                         if (fabs(ball.velocity) < 0.1f) {
+                             spawnBall(ball, numLeds, pal);
+                         }
+                    }
+                }
+            } else {
+                // Falling up (numLeds -> 0)
+                if (ball.position <= 0) {
+                    ball.position = 0;
+                    ball.velocity *= -ball.bounciness;
+
+                    if (fabs(ball.velocity) < 0.5f) {
+                         ball.velocity = 0;
+                         if (fabs(ball.velocity) < 0.1f) {
+                             spawnBall(ball, numLeds, pal);
+                         }
+                    }
                 }
             }
         }
         
-        // Render
+        // Render Balls
         for (const auto& ball : balls) {
             if (!ball.active) continue;
             
             int pos = (int)round(ball.position);
-            if (pos >= 0 && pos < numLeds) {
-                // Draw ball with some anti-aliasing or just pixel?
-                // Simple pixel for now
-                leds[pos] = ball.color;
+            
+            // Draw ball with size (trail)
+            for (int j = 0; j < ballSize; j++) {
+                int drawPos = pos;
+                if (!directionUp) {
+                    // Falling down, trail is above (smaller index)
+                    drawPos = pos - j;
+                } else {
+                    // Falling up, trail is below (larger index)
+                    drawPos = pos + j;
+                }
+
+                if (drawPos >= 0 && drawPos < numLeds) {
+                    leds[drawPos] = ball.color;
+                }
             }
         }
     }
@@ -109,11 +138,15 @@ private:
     }
 
     void spawnBall(Ball& ball, int numLeds, const CRGBPalette16& pal) const {
-        ball.position = 0; // Top
-        ball.velocity = 0; // Starts from rest or small push?
+        if (!directionUp) {
+            ball.position = 0; // Top
+            ball.velocity = 0; 
+        } else {
+            ball.position = numLeds - 1; // Bottom
+            ball.velocity = 0;
+        }
         
-        // Random bounciness: "slightly different random bouncinesses"
-        // Variation +/- 10%
+        // Random bounciness
         float variation = (random8() / 255.0f) * 0.2f - 0.1f;
         ball.bounciness = bounciness + variation;
         if (ball.bounciness < 0.1f) ball.bounciness = 0.1f;
@@ -121,18 +154,17 @@ private:
         // Sample random color
         ball.color = ColorFromPalette(pal, random8(255));
         
-        // Stagger starts?
-        // We can just set active true immediately, relying on random render loop to space them out naturally as they die?
-        // Or adding a "start delay"?
-        // For simplicity:
         ball.active = true;
     }
 
     mutable DynamicPalette palette;
+    mutable DynamicPalette backgroundPalette;
     float speed;
     float bounciness;
     int numBalls;
     float gravity;
+    bool directionUp;
+    int ballSize;
     
     // State
     mutable std::vector<Ball> balls;

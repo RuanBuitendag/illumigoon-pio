@@ -15,13 +15,17 @@ public:
         stars = new Star[numStars];
 
         // Default Background: Deep Blue Gradient
-        bgPalette.colors.push_back(CRGB(0, 0, 0));
-        bgPalette.colors.push_back(CRGB(0, 0, 20));
-        bgPalette.colors.push_back(CRGB(0, 5, 30));
+        if (bgPalette.colors.empty()) {
+            bgPalette.colors.push_back(CRGB(0, 0, 0));
+            bgPalette.colors.push_back(CRGB(0, 0, 20));
+            bgPalette.colors.push_back(CRGB(0, 5, 30));
+        }
 
         // Default Stars: White/Blueish
-        starPalette.colors.push_back(CRGB::White);
-        starPalette.colors.push_back(CRGB(200, 200, 255));
+        if (starPalette.colors.empty()) {
+            starPalette.colors.push_back(CRGB::White);
+            starPalette.colors.push_back(CRGB(200, 200, 255));
+        }
         
         registerParameter("Speed", &this->speed, 0.0f, 5.0f, 0.01f, "Twinkle speed");
         registerParameter("Background", &this->bgPalette, "Sky gradient");

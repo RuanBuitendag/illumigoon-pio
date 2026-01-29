@@ -29,12 +29,19 @@ public:
           speed(1.0f)
     {
         // Initialize palette from constructor colors
-        palette.colors = colours;
+        if (!colours.empty()) {
+            palette.colors = colours;
+        } else {
+            // Default 3 colors
+             palette.colors.push_back(CRGB::Red);
+             palette.colors.push_back(CRGB::Green);
+             palette.colors.push_back(CRGB::Blue);
+        }
         
         registerParameter("Line Length", &this->lineLength, 0, 90, 1, "Wave segment length");
         registerParameter("Background", &this->background, "Background color");
         registerParameter("Palette", &this->palette, "Line colors");
-        registerParameter("Speed", &this->speed, 0.1f, 5.0f, 0.1f, "Animation speed");
+        registerParameter("Speed", &this->speed, 0.1f, 10.0f, 0.1f, "Animation speed");
 
         // Initial population
         syncLines();
@@ -51,7 +58,7 @@ public:
             leds[i] = background;
         }
 
-        float t = epoch * 0.001f * speed;
+        float t = epoch * 0.0001f * speed;
 
         for (int i = 0; i < numLeds; i++) {
             uint16_t r = 0, g = 0, b = 0;

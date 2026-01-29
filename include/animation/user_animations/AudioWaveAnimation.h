@@ -11,9 +11,14 @@ public:
           currentLedsLit(0.0f),
           waveOffset(0.0f) {
         
+        // Default Palette (Red/Blue)
+        palette = {{ CRGB::Red, CRGB::Blue }};
+
         // Audio smoothing factors
         attackFactor = (1000000.0f / attackTime) / SAMPLING_FREQ;
         releaseFactor = (1000000.0f / releaseTime) / SAMPLING_FREQ;
+
+        registerParameter("Palette", &this->palette, "Wave colors");
     }
 
     std::string getTypeName() const override { return "AudioWave"; }
@@ -43,6 +48,8 @@ private:
         // Audio controls speed via waveOffset
         waveOffset -= lowFreqEnergy / 160000.0f - 0.5f;
 
+        CRGBPalette16 p = palette.toPalette16();
+
         for (int i = 0; i < numLeds; i++) {
             float phase = waveOffset + i * waveSpacing;
 
@@ -52,12 +59,28 @@ private:
             // Determine which wave this LED belongs to
             int waveIndex = floor(phase / (2 * PI));
 
-            // Alternate colours per wave
-            uint8_t hue = (waveIndex % 2 == 0) ? 20 : 160; // red / blue
-
-            leds[i] = CHSV(hue, 255, waveIndex % 2 == 0 ? brightness : 0);
+            // Sample from palette based on wave index parity or continuous? 
+            // Original logic: Alternate colours per wave (Red/Blue)
+            // New logic: Use palette. If palette has 2 colors, it mimics original. 
+            // We can map waveIndex to palette index.
+            
+            // Simple mapping: alternate between palette colors
+            uint8_t paletteIndex = (waveIndex % 2) * 128; // 0 or 128
+            // Or better, let's map it to the palette size
+            // But to keep distinct waves, let's just use the palette.
+            
+            // Let's use the wave index to step through the palette
+            // If we have a gradient, we might want to sample smoothly? 
+            // The original was binary (Blue or Red). 
+            // Let's sample based on (waveIndex % 16) * 16 to get some variation or just two colors.
+            // Safe bet:
+            CRGB color = ColorFromPalette(p, (waveIndex % 16) * 16, brightness);
+            
+            leds[i] = color;
         }
     }
+
+    void setPalette(const DynamicPalette& newPalette) { palette = newPalette; }
 
 private:
     // config
@@ -69,6 +92,7 @@ private:
     float lowFreqEnergy;
     float currentLedsLit;
     float waveOffset;
+    DynamicPalette palette; // User palette
     
     // Derived constants
     float attackFactor;

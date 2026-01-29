@@ -6,17 +6,19 @@
 
 class LineAnimation : public Animation {
 public:
-    LineAnimation(const std::string& name, int lineLength, int spacing, CRGB colour, int speed)
+    LineAnimation(const std::string& name, int lineLength, int spacing, CRGB colour, float speed)
         : Animation(name), lineLength(lineLength), spacing(spacing), speed(speed)
     {
         // Initialize default gradient from single color if needed, or just set a default
-        gradientPalette.colors.push_back(colour);
-        gradientPalette.colors.push_back(colour); // Consistent solid color by default
+        if (gradientPalette.colors.empty()) {
+             gradientPalette.colors.push_back(colour);
+             gradientPalette.colors.push_back(colour); // Consistent solid color by default
+        }
 
         registerParameter("Line Length", &this->lineLength, 0, 90, 1, "Length of segments");
         registerParameter("Spacing", &this->spacing, 0, 90, 1, "Distance between segments");
         registerParameter("Gradient", &this->gradientPalette, "Color gradient");
-        registerParameter("Speed", &this->speed, 0, 100, 1, "Animation speed multiplier");
+        registerParameter("Speed", &this->speed, 0.0f, 10.0f, 1.0f, "Animation speed multiplier");
     }
 
     std::string getTypeName() const override { return "Line"; }

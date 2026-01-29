@@ -11,6 +11,15 @@ public:
         if (seed == 0) {
             this->seed = random(65535);
         }
+        
+        // Ensure not black
+        if (this->palette.colors.empty()) {
+            this->palette.colors.push_back(CRGB::DarkBlue);
+            this->palette.colors.push_back(CRGB::Teal);
+            this->palette.colors.push_back(CRGB::Green);
+            this->palette.colors.push_back(CRGB::Purple); // Add a 4th for variety
+        }
+
         // Seed parameter is intentionally hidden (internal usage only)
         registerParameter("Palette", &this->palette, "Aurora colors");
         registerParameter("Speed", &this->speed, 0.1f, 5.0f, 0.1f, "Animation speed");

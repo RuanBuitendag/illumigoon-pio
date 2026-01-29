@@ -10,8 +10,14 @@ public:
           brightness(0.0f) {
         
         // Attack/Decay config
+        // Attack/Decay config
         // Quick attack, relatively quick release for punchy effect
         decayRate = 0.05f;  // Per frame decrease
+        
+        // Default Palette (Purple/Pink)
+        palette = {{ CRGB(255, 0, 255), CRGB(128, 0, 128) }};
+
+        registerParameter("Palette", &this->palette, "Kick colors");
     }
 
     std::string getTypeName() const override { return "KickReaction"; }
@@ -49,12 +55,25 @@ private:
     void draw(CRGB* leds, int numLeds) {
         // Bright purple/pink: RGB(255, 0, 255) / HSV(192..255?)
         // Let's use a nice CHSV pink/purple
-        uint8_t hue = 220; // Pinkish purple
-        uint8_t sat = 255;
-        uint8_t val = (uint8_t)(brightness * 255.0f);
+        // uint8_t hue = 220; // Pinkish purple
+        // uint8_t sat = 255;
+        // uint8_t val = (uint8_t)(brightness * 255.0f);
+        
+        CRGBPalette16 p = palette.toPalette16();
+        
+        // Sample color from palette. 
+        // We can just pick the first color or blend?
+        // Let's map brightness to the palette? OR just use a fixed color from the palette?
+        // Using index 0 allows for single color control.
+        // Using random or cycling might be cool too but let's stick to "Main color" idea.
+        // If we want the kick to flash a specific color, we can just use palette[0].
+        
+        CRGB color = ColorFromPalette(p, 0); 
+        // Apply brightness
+        color.nscale8_video((uint8_t)(brightness * 255.0f));
 
         for(int i = 0; i < numLeds; i++) {
-            leds[i] = CHSV(hue, sat, val);
+            leds[i] = color;
         }
     }
 
@@ -62,6 +81,7 @@ private:
     float brightness;
     float attackRate;
     float decayRate;
+    DynamicPalette palette;
 };
 
 #endif

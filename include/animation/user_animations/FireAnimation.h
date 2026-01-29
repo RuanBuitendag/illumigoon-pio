@@ -10,7 +10,18 @@ public:
         : Animation(name), palette(palette), speed(speed), height(height), cooling(55), sparking(sparking), sparkFreq(30) {
             
             // Initialize spark palette to white-ish by default
-            sparkPalette = {{ CRGB::White, CRGB::Gold }};
+            if (this->sparkPalette.colors.empty()) {
+                this->sparkPalette.colors.push_back(CRGB::White);
+                this->sparkPalette.colors.push_back(CRGB::Gold);
+            }
+            
+            // Default Fire Palette if empty
+            if (this->palette.colors.empty()) {
+                this->palette.colors.push_back(CRGB::Black);
+                this->palette.colors.push_back(CRGB::Red);
+                this->palette.colors.push_back(CRGB::Orange);
+                this->palette.colors.push_back(CRGB::Yellow);
+            }
 
             registerParameter("Speed", &this->speed, 0.0f, 10.0f, 0.01f, "Flame flicker speed");
             registerParameter("Height", &this->height, 0, 255, 1, "Flame height");
