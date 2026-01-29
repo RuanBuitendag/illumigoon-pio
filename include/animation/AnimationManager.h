@@ -37,7 +37,7 @@ public:
     void setAnimation(const std::string& presetName); // Select a PRESET
     std::string getCurrentAnimationName() const; // Returns PRESET name
     
-    void update(uint32_t epoch);
+    void update(uint32_t epoch, float phase = 0.0f);
     
     std::vector<std::string> getPresetNames() const;
     std::vector<std::string> getBaseAnimationNames() const;
@@ -50,8 +50,12 @@ public:
     void setPower(bool on);
     bool getPower() const;
 
+    void setDevicePhase(float phase);
+    float getDevicePhase() const;
+
 private:
     LedController& controller;
+    float devicePhase = 0.0f;
 
     // Map of BaseType -> Instance (e.g. "Fire" -> FireAnimation*)
     std::map<std::string, Animation*> baseAnimations;

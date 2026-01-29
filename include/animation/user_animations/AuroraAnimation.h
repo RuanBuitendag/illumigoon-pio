@@ -6,19 +6,13 @@
 
 class AuroraAnimation : public Animation {
 public:
-    AuroraAnimation(const std::string& name, const DynamicPalette& palette, int seed = 0, float speed = 1.0f, bool reverse = false)
-        : Animation(name), palette(palette), seed(seed), speed(speed), reverse(reverse) {
-        if (seed == 0) {
-            this->seed = random(65535);
-        }
+    AuroraAnimation()
+        : Animation("Aurora"), seed(0), speed(1.0f), reverse(false) {
         
-        // Ensure not black
-        if (this->palette.colors.empty()) {
-            this->palette.colors.push_back(CRGB::DarkBlue);
-            this->palette.colors.push_back(CRGB::Teal);
-            this->palette.colors.push_back(CRGB::Green);
-            this->palette.colors.push_back(CRGB::Purple); // Add a 4th for variety
-        }
+        this->seed = random(65535);
+        
+        // Default Aurora Palette
+        this->palette.colors = { CRGB::DarkBlue, CRGB::Teal, CRGB::Green, CRGB::Purple };
 
         // Seed parameter is intentionally hidden (internal usage only)
         registerParameter("Palette", &this->palette, "Aurora colors");

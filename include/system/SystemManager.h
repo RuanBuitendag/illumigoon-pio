@@ -42,4 +42,6 @@ private:
     void loadConfig();
     void saveConfig();
     std::string lastSavedGroupName;
+
+public:
 };

@@ -3,7 +3,7 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 
-AnimationManager::AnimationManager(LedController& ctrl) : controller(ctrl), currentAnimation(nullptr), powerState(true) {
+AnimationManager::AnimationManager(LedController& ctrl) : controller(ctrl), currentAnimation(nullptr), powerState(true), devicePhase(0.0f) {
     if (!LittleFS.begin(true)) {
         // Serial.println("LittleFS Mount Failed");
         // Handle error?
@@ -17,6 +17,17 @@ AnimationManager::AnimationManager(LedController& ctrl) : controller(ctrl), curr
     AnimationPresets::createAnimations(*this);
     loadPresets();
     
+    // Load Phase Persistence
+    if (LittleFS.exists("/phase.json")) {
+        File f = LittleFS.open("/phase.json", "r");
+        if (f) {
+            StaticJsonDocument<128> doc;
+            deserializeJson(doc, f);
+            devicePhase = doc["phase"] | 0.0f;
+            f.close();
+        }
+    }
+
     // If we have presets, select the first one?
     // Or maybe restore last used?
     if (!presets.empty()) {
@@ -311,10 +322,18 @@ std::vector<std::string> AnimationManager::getBaseAnimationNames() const {
 }
 
 
-void AnimationManager::update(uint32_t epoch) {
+void AnimationManager::update(uint32_t epoch, float phase) {
     if (currentAnimation && !controller.isOtaInProgress()) {
         if (powerState) {
+            currentAnimation->setDevicePhase(devicePhase);
             currentAnimation->render(epoch, controller.getLeds(), controller.getNumLeds());
+            
+            // Apply Animation Brightness
+            uint8_t animBrightness = currentAnimation->getBrightness();
+            if (animBrightness < 255) {
+                 nscale8_video(controller.getLeds(), controller.getNumLeds(), animBrightness);
+            }
+
             controller.render();
         } else {
             controller.clear();
@@ -340,4 +359,23 @@ Animation* AnimationManager::getBaseAnimation(const std::string& typeName) {
         return it->second;
     }
     return nullptr;
+}
+
+void AnimationManager::setDevicePhase(float phase) {
+    if (phase < 0.0f) phase = 0.0f;
+    if (phase > 1.0f) phase = 1.0f;
+    devicePhase = phase;
+
+    // Persist
+    File f = LittleFS.open("/phase.json", "w");
+    if (f) {
+        StaticJsonDocument<128> doc;
+        doc["phase"] = devicePhase;
+        serializeJson(doc, f);
+        f.close();
+    }
+}
+
+float AnimationManager::getDevicePhase() const {
+    return devicePhase;
 }

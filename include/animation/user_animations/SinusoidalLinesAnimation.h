@@ -15,28 +15,16 @@ public:
         float phase;
     };
 
-    SinusoidalLinesAnimation(const std::string& name,
-                             const std::vector<CRGB>& colours,
-                             int lineLength,
-                             float minFreq,
-                             float maxFreq,
-                             CRGB bg = CRGB::Black)
-        : Animation(name),
-          lineLength(lineLength),
-          minFrequency(minFreq),
-          maxFrequency(maxFreq),
-          background(bg),
+    SinusoidalLinesAnimation()
+        : Animation("SinusoidalLines"),
+          lineLength(10),
+          minFrequency(1.0f),
+          maxFrequency(5.0f),
+          background(CRGB(0, 0, 0)),
           speed(1.0f)
     {
-        // Initialize palette from constructor colors
-        if (!colours.empty()) {
-            palette.colors = colours;
-        } else {
-            // Default 3 colors
-             palette.colors.push_back(CRGB::Red);
-             palette.colors.push_back(CRGB::Green);
-             palette.colors.push_back(CRGB::Blue);
-        }
+        // Default 3 colors
+        palette.colors = { CRGB::Red, CRGB::Cyan, CRGB::Blue };
         
         registerParameter("Line Length", &this->lineLength, 0, 90, 1, "Wave segment length");
         registerParameter("Background", &this->background, "Background color");

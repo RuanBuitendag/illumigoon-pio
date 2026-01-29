@@ -14,12 +14,18 @@ struct Ball {
 
 class BouncingBallAnimation : public Animation {
 public:
-    BouncingBallAnimation(const std::string& name, const DynamicPalette& palette, int numBalls = 3, float speed = 1.0f, float bounciness = 0.8f)
-        : Animation(name), palette(palette), speed(speed), bounciness(bounciness), numBalls(numBalls), gravity(9.8f), directionUp(false), ballSize(1) {
+    BouncingBallAnimation()
+        : Animation("BouncingBall"), speed(1.0f), bounciness(0.8f), numBalls(5), gravity(9.8f), directionUp(true), ballSize(1) {
             
+            // Default Palette
+            palette.colors = { CRGB::Red, CRGB::Blue, CRGB::Purple };
+            
+            // Default Background (Black)
+            backgroundPalette.colors = { CRGB::Black };
+
             // Register parameters
             registerParameter("Speed", &this->speed, 0.1f, 10.0f, 0.5f, "Simulation speed");
-            registerParameter("Bounciness", &this->bounciness, 0.1f, 1.2f, 0.05f, "Bounce elasticity");
+            registerParameter("Bounciness", &this->bounciness, 0.1f, 0.95f, 0.05f, "Bounce elasticity");
             registerParameter("Num Balls", &this->numBalls, 1, 20, 1, "Number of balls");
             registerParameter("Ball Size", &this->ballSize, 1, 10, 1, "Size of the balls");
             registerParameter("Direction Up", &this->directionUp, "Fall direction (Up/Down)");
@@ -81,11 +87,9 @@ public:
                     ball.position = numLeds - 1;
                     ball.velocity *= -ball.bounciness;
                     
-                    if (fabs(ball.velocity) < 0.5f) {
-                         ball.velocity = 0;
-                         if (fabs(ball.velocity) < 0.1f) {
-                             spawnBall(ball, numLeds, pal);
-                         }
+                    // Threshold 22.0 corresponds to approx 2.5 pixels bounce height (v = sqrt(2*a*h), a=98)
+                    if (fabs(ball.velocity) < 22.0f) {
+                         spawnBall(ball, numLeds, pal);
                     }
                 }
             } else {
@@ -94,11 +98,9 @@ public:
                     ball.position = 0;
                     ball.velocity *= -ball.bounciness;
 
-                    if (fabs(ball.velocity) < 0.5f) {
-                         ball.velocity = 0;
-                         if (fabs(ball.velocity) < 0.1f) {
-                             spawnBall(ball, numLeds, pal);
-                         }
+                    // Threshold 22.0 corresponds to approx 2.5 pixels bounce height
+                    if (fabs(ball.velocity) < 22.0f) {
+                         spawnBall(ball, numLeds, pal);
                     }
                 }
             }

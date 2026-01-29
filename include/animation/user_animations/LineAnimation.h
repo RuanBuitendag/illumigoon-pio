@@ -6,14 +6,11 @@
 
 class LineAnimation : public Animation {
 public:
-    LineAnimation(const std::string& name, int lineLength, int spacing, CRGB colour, float speed)
-        : Animation(name), lineLength(lineLength), spacing(spacing), speed(speed)
+    LineAnimation()
+        : Animation("Line"), lineLength(60), spacing(30), speed(5.0f)
     {
-        // Initialize default gradient from single color if needed, or just set a default
-        if (gradientPalette.colors.empty()) {
-             gradientPalette.colors.push_back(colour);
-             gradientPalette.colors.push_back(colour); // Consistent solid color by default
-        }
+        // Default gradient
+        gradientPalette.colors = { CRGB(255, 30, 0), CRGB(255, 30, 0) };
 
         registerParameter("Line Length", &this->lineLength, 0, 90, 1, "Length of segments");
         registerParameter("Spacing", &this->spacing, 0, 90, 1, "Distance between segments");
@@ -30,9 +27,20 @@ public:
         if (cycle == 0) cycle = 1; // Prevent divide by zero
 
         int offset = (epoch * speed) / 10; 
-
+        
+        // Apply phase offset
+        // devicePhase is 0.0-1.0, map to 0-cycle
+        int phaseOffset = (int)(cycle * devicePhase);
+        
+        // Invert phase addition if needed, or just add. 
+        // Adding phase effectively shifts the pattern "backwards" relative to movement if strictly added to 'pos' calculation in a certain way?
+        // Let's standard: pos determines "where in the cycle is this pixel". 
+        // If we want "Phase 0.5" to mean "Halfway through cycle ahead of Phase 0.0"
+        
         for (int i = 0; i < numLeds; i++) {
-            int pos = (i - offset) % cycle;
+            // (i - offset) shifts the pattern along the strip.
+            // Adding phaseOffset shifts the pattern locally.
+            int pos = (i - offset + phaseOffset) % cycle;
             if (pos < 0) pos += cycle;
 
             if (pos < lineLength) {

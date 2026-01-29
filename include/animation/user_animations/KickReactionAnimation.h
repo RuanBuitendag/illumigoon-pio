@@ -5,8 +5,8 @@
 
 class KickReactionAnimation : public AudioReactAnimation {
 public:
-    KickReactionAnimation(const std::string& name)
-        : AudioReactAnimation(name),
+    KickReactionAnimation()
+        : AudioReactAnimation("KickReaction"),
           brightness(0.0f) {
         
         // Attack/Decay config

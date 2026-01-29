@@ -10,7 +10,9 @@
 
 class Animation {
 public:
-    Animation(const std::string& name) : name(name) {}
+    Animation(const std::string& name) : name(name) {
+        registerParameter("Brightness", &brightness, 0, 255, 1, "Animation Brightness");
+    }
 
 	virtual ~Animation() {}
 
@@ -18,6 +20,10 @@ public:
 
     const std::string& getName() const {
         return name;
+    }
+
+    uint8_t getBrightness() const {
+        return brightness;
     }
 
     const std::vector<AnimationParameter>& getParameters() const {
@@ -39,7 +45,13 @@ public:
         }
     }
 
+    virtual void setDevicePhase(float phase) {
+        devicePhase = phase;
+    }
+
 protected:
+    float devicePhase = 0.0f; // 0.0 to 1.0
+    uint8_t brightness = 255;
     void registerParameter(const char* name, int* value, int min = 0, int max = 255, int step = 1, const char* desc = "") {
         parameters.push_back({name, PARAM_INT, value, desc, (float)min, (float)max, (float)step});
     }

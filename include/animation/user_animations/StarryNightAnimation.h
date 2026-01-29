@@ -6,26 +6,17 @@
 
 class StarryNightAnimation : public Animation {
 public:
-    StarryNightAnimation(const std::string& name, uint8_t numStars = 15, uint16_t seed = 0)
-        : Animation(name), numStars(numStars), seed(seed), stars(nullptr), initialized(false), speed(1.0f) {
-        if (seed == 0) {
-            this->seed = random(65535);
-        }
+    StarryNightAnimation()
+        : Animation("StarryNight"), numStars(15), seed(0), stars(nullptr), initialized(false), speed(1.0f) {
         
+        this->seed = random(65535);
         stars = new Star[numStars];
 
         // Default Background: Deep Blue Gradient
-        if (bgPalette.colors.empty()) {
-            bgPalette.colors.push_back(CRGB(0, 0, 0));
-            bgPalette.colors.push_back(CRGB(0, 0, 20));
-            bgPalette.colors.push_back(CRGB(0, 5, 30));
-        }
+        bgPalette.colors = { CRGB(0, 0, 0), CRGB(0, 0, 20), CRGB(0, 5, 30) };
 
         // Default Stars: White/Blueish
-        if (starPalette.colors.empty()) {
-            starPalette.colors.push_back(CRGB::White);
-            starPalette.colors.push_back(CRGB(200, 200, 255));
-        }
+        starPalette.colors = { CRGB::White, CRGB(200, 200, 255) };
         
         registerParameter("Speed", &this->speed, 0.0f, 5.0f, 0.01f, "Twinkle speed");
         registerParameter("Background", &this->bgPalette, "Sky gradient");

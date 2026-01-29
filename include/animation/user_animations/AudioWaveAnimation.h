@@ -5,8 +5,8 @@
 
 class AudioWaveAnimation : public AudioReactAnimation {
 public:
-    AudioWaveAnimation(const std::string& name)
-        : AudioReactAnimation(name),
+    AudioWaveAnimation()
+        : AudioReactAnimation("AudioWave"),
           lowFreqEnergy(0.0f),
           currentLedsLit(0.0f),
           waveOffset(0.0f) {

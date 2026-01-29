@@ -6,22 +6,14 @@
 
 class FireAnimation : public Animation {
 public:
-    FireAnimation(const std::string& name, const DynamicPalette& palette, float speed = 1.0f, uint8_t height = 150, uint8_t sparking = 120)
-        : Animation(name), palette(palette), speed(speed), height(height), cooling(55), sparking(sparking), sparkFreq(30) {
+    FireAnimation()
+        : Animation("Fire"), speed(0.5f), height(150), cooling(55), sparking(120), sparkFreq(30) {
             
             // Initialize spark palette to white-ish by default
-            if (this->sparkPalette.colors.empty()) {
-                this->sparkPalette.colors.push_back(CRGB::White);
-                this->sparkPalette.colors.push_back(CRGB::Gold);
-            }
+            this->sparkPalette.colors = { CRGB::White };
             
-            // Default Fire Palette if empty
-            if (this->palette.colors.empty()) {
-                this->palette.colors.push_back(CRGB::Black);
-                this->palette.colors.push_back(CRGB::Red);
-                this->palette.colors.push_back(CRGB::Orange);
-                this->palette.colors.push_back(CRGB::Yellow);
-            }
+            // Default Fire Palette
+            this->palette.colors = { CRGB::Black, CRGB::Red, CRGB::Orange, CRGB::Yellow };
 
             registerParameter("Speed", &this->speed, 0.0f, 10.0f, 0.01f, "Flame flicker speed");
             registerParameter("Height", &this->height, 0, 255, 1, "Flame height");

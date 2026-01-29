@@ -6,10 +6,9 @@
 
 class BreathingAnimation : public Animation {
 public:
-    BreathingAnimation(const std::string& name, CRGB colour, 
-                       int attack, int hold, int release, int rest, uint8_t minBrightness = 0)
-        : Animation(name), colour(colour), 
-          attack(attack), hold(hold), release(release), rest(rest), minBrightness(minBrightness)
+    BreathingAnimation()
+        : Animation("Breathing"), colour(CRGB(255, 20, 0)), 
+          attack(2000), hold(1000), release(2000), rest(0), minBrightness(0)
     {
         registerParameter("Colour", &this->colour, "Main color");
         registerParameter("Attack", &this->attack, 0, 5000, 1, "Fade-in duration (ms)");
