@@ -29,6 +29,11 @@ public:
         if (totalCycle == 0) totalCycle = 1;
 
         int cyclePos = timeMs % totalCycle;
+        
+        // Add phase offset
+        int phaseShift = (int)(totalCycle * devicePhase);
+        cyclePos = (cyclePos + phaseShift) % totalCycle;
+        
         uint8_t brightness = 0;
 
         // Helper for easing: 0.0 -> 1.0 (InOutSine)

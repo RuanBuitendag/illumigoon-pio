@@ -54,7 +54,8 @@ public:
 
             for (const auto& line : lines) {
                 int halfLength = lineLength / 2;
-                float sine = sinf(2.0f * M_PI * line.frequency * t + line.phase);
+                float phaseShift = devicePhase * 2.0f * M_PI; // 0.0-1.0 mapped to 0-2PI
+                float sine = sinf(2.0f * M_PI * line.frequency * t + line.phase + phaseShift);
 
                 int center = halfLength +
                              (int)((numLeds - lineLength) * 0.5f * (1.0f + sine));

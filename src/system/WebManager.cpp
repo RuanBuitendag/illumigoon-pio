@@ -224,20 +224,7 @@ void WebManager::setupRoutes() {
         }
     });
 
-    // API: Set Device Phase
-    server.on("/api/settings/phase", HTTP_POST, [this](AsyncWebServerRequest *request) {}, NULL, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-        StaticJsonDocument<200> doc;
-        DeserializationError error = deserializeJson(doc, data, len);
-        if (!error && doc.containsKey("phase")) {
-            float p = doc["phase"].as<float>();
-            animManager.setDevicePhase(p);
-            request->send(200, "application/json", "{\"status\":\"ok\"}");
-             // Broadcast new status to update UI sliders
-             ws.textAll("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
-        } else {
-            request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-        }
-    });
+
 
     // API: Trigger OTA Check
     server.on("/api/ota/check", HTTP_POST, [this](AsyncWebServerRequest *request) {
@@ -384,6 +371,13 @@ void WebManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
         } else if (strcmp(cmd, "checkOTA") == 0) {
              otaManager.forceCheck();
              meshManager.broadcastCheckForUpdates();
+        } else if (strcmp(cmd, "setPhase") == 0 && doc.containsKey("value")) {
+             float phase = doc["value"].as<float>();
+             animManager.setDevicePhase(phase);
+             // Echo back status to THIS client (and others connected to THIS device)
+             // We use textAll because multiple tabs might be open to this Single device.
+             // We do NOT broadcast to mesh.
+             ws.textAll("{\"event\":\"status\", \"data\":" + getSystemStatusJson() + "}");
         }
     }
 }
