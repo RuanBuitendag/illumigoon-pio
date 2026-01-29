@@ -223,6 +223,14 @@ void WebManager::setupRoutes() {
               request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
         }
     });
+
+    // API: Trigger OTA Check
+    server.on("/api/ota/check", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        Serial.println("API: Triggering OTA check");
+        otaManager.forceCheck();
+        meshManager.broadcastCheckForUpdates();
+        request->send(200, "application/json", "{\"status\":\"ok\"}");
+    });
     
     // Static Files (React App) - Must be last to avoid capturing API routes
     server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
@@ -364,6 +372,9 @@ void WebManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
         }
     }
 }
+
+
+
 
 String WebManager::getSystemStatusJson() {
     StaticJsonDocument<256> doc;
