@@ -28,14 +28,33 @@ AnimationManager::AnimationManager(LedController& ctrl) : controller(ctrl), curr
         }
     }
 
-    // If we have presets, select the first one?
-    // Or maybe restore last used?
-    if (!presets.empty()) {
-        setAnimation(presets[0].name);
-    } else {
-        // Fallback to first base animation if no presets exist
-        if (!baseAnimations.empty()) {
-             setAnimation(baseAnimations.begin()->first);
+    // Load Last Preset Persistence
+    std::string lastPreset;
+    if (LittleFS.exists("/last_preset.json")) {
+        File f = LittleFS.open("/last_preset.json", "r");
+        if (f) {
+            StaticJsonDocument<128> doc;
+            deserializeJson(doc, f);
+            const char* name = doc["preset"];
+            if (name) lastPreset = name;
+            f.close();
+        }
+    }
+
+    // Restore last used preset/animation, or fallback to first available
+    bool foundLast = false;
+    if (!lastPreset.empty()) {
+        // Check if it's a preset OR a base animation
+        if (exists(lastPreset) || baseAnimations.find(lastPreset) != baseAnimations.end()) {
+            setAnimation(lastPreset);
+            foundLast = true;
+        }
+    }
+    if (!foundLast) {
+        if (!presets.empty()) {
+            setAnimation(presets[0].name);
+        } else if (!baseAnimations.empty()) {
+            setAnimation(baseAnimations.begin()->first);
         }
     }
 }
@@ -320,6 +339,7 @@ void AnimationManager::setAnimation(const std::string& name) {
         
         currentAnimation = anim;
         currentPresetName = name;
+        saveLastPreset();
         return;
     }
     
@@ -330,6 +350,7 @@ void AnimationManager::setAnimation(const std::string& name) {
          it->second->resetToDefaults();
          currentAnimation = it->second;
          currentPresetName = name; // Treat base name as the current "preset" name
+         saveLastPreset();
          return;
     }
 }
@@ -412,4 +433,14 @@ void AnimationManager::setDevicePhase(float phase) {
 
 float AnimationManager::getDevicePhase() const {
     return devicePhase;
+}
+
+void AnimationManager::saveLastPreset() {
+    File f = LittleFS.open("/last_preset.json", "w");
+    if (f) {
+        StaticJsonDocument<128> doc;
+        doc["preset"] = currentPresetName;
+        serializeJson(doc, f);
+        f.close();
+    }
 }

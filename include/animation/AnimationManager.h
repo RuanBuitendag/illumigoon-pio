@@ -72,6 +72,8 @@ private:
     std::string currentPresetName;
 
     bool powerState;
+
+    void saveLastPreset();
 };
 
 
