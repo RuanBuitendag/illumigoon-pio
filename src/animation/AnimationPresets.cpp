@@ -13,6 +13,8 @@
 #include "animation/user_animations/AudioWaveAnimation.h"
 #include "animation/user_animations/KickReactionAnimation.h"
 #include "animation/user_animations/BouncingBallAnimation.h"
+#include "animation/user_animations/FrequencySpectrumAnimation.h"
+#include "animation/user_animations/ReferenceAudioAnimation.h"
 
 // Define internal resources locally
 void AnimationPresets::createAnimations(AnimationManager& manager) {
@@ -28,6 +30,8 @@ void AnimationPresets::createAnimations(AnimationManager& manager) {
     manager.registerBaseAnimation(new StarryNightAnimation());
     manager.registerBaseAnimation(new SinusoidalLinesAnimation());
     manager.registerBaseAnimation(new BouncingBallAnimation());
+    manager.registerBaseAnimation(new FrequencySpectrumAnimation());
+    manager.registerBaseAnimation(new ReferenceAudioAnimation());
 
     // 2. Load existing presets
     manager.loadPresets();

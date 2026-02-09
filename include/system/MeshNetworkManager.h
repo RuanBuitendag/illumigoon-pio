@@ -30,7 +30,10 @@ enum class MessageType : uint8_t {
     RENAME_PRESET = 14,
     ASSIGN_GROUP = 15,
     SYNC_PARAM = 16,
-    SYNC_POWER = 17 // New
+    SYNC_POWER = 17,
+    REQUEST_SYNC_PRESETS = 18,
+    PRESET_MANIFEST = 19,
+    REQUEST_PRESET_DATA = 20
 };
 
 struct __attribute__((packed)) AnimationStatePayload {
@@ -89,6 +92,10 @@ public:
     // Removed duplicate declaration
     void broadcastDeletePreset(const std::string& name);
     void broadcastRenamePreset(const std::string& oldName, const std::string& newName);
+    
+    // Preset Synchronization
+    void broadcastRequestSyncPresets();
+    void broadcastRequestPresetData(const std::string& name, uint64_t targetId);
 
     // OTA / Updates
     void setOtaCallback(std::function<void()> callback) { otaCallback = callback; }
@@ -197,7 +204,32 @@ private:
     PendingPowerSync pendingPowerSync;
 
     std::string myGroupName;
-
+    
+    // Track requested presets to avoid spamming requests
+    struct RequestTracker {
+        std::string name;
+        unsigned long requestTime;
+    };
+    std::vector<RequestTracker> requestedPresets; 
+    
+    // Non-blocking sync queues
+    struct ManifestQueue {
+        std::vector<std::string> names;
+        unsigned long nextSendTime = 0;
+        bool active = false;
+    };
+    ManifestQueue manifestQueue;
+    
+    struct DataRequestQueue {
+        struct Request {
+            std::string name;
+            uint64_t targetId;
+        };
+        std::vector<Request> requests;
+        unsigned long nextSendTime = 0;
+    };
+    DataRequestQueue dataRequestQueue;
+    
     static MeshNetworkManager* instance;
 
     static void onReceiveWrapper(const uint8_t* mac, const uint8_t* data, int len);
@@ -224,6 +256,10 @@ private:
     void handleAssignGroup(const MeshMessage& msg);
     void handleSyncParam(const MeshMessage& msg);
     void handleSyncPower(const MeshMessage& msg);
+    
+    void handleRequestSyncPresets(const MeshMessage& msg);
+    void handlePresetManifest(const MeshMessage& msg);
+    void handleRequestPresetData(const MeshMessage& msg);
 
     // Actual broadcast implementations (called from update())
     void doSendSavePreset(const std::string& name, const std::string& baseType, const std::string& paramsJson);

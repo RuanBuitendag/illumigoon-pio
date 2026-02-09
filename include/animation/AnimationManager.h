@@ -27,6 +27,7 @@ public:
     
     // New: Save preset from raw JSON data (for mesh Sync)
     bool savePresetFromData(const std::string& name, const std::string& baseType, const std::string& paramsJson);
+    bool getPresetData(const std::string& name, std::string& baseType, std::string& paramsJson);
     
     bool renamePreset(const std::string& oldName, const std::string& newName);
     bool deletePreset(const std::string& name);

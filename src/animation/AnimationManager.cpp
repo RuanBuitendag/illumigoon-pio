@@ -234,6 +234,40 @@ bool AnimationManager::savePresetFromData(const std::string& name, const std::st
 }
 
 
+
+bool AnimationManager::getPresetData(const std::string& name, std::string& baseType, std::string& paramsJson) {
+     const Preset* targetPreset = nullptr;
+    for (const auto& p : presets) {
+        if (p.name == name) {
+            targetPreset = &p;
+            break;
+        }
+    }
+    
+    if (!targetPreset) return false;
+    
+    File file = LittleFS.open(targetPreset->filePath.c_str(), FILE_READ);
+    if (!file) return false;
+    
+    DynamicJsonDocument doc(4096);
+    DeserializationError error = deserializeJson(doc, file);
+    file.close();
+    
+    if (error) return false;
+    
+    baseType = doc["baseType"].as<std::string>();
+    
+    if (doc.containsKey("params")) {
+        // Serialize just the params object back to JSON string
+        serializeJson(doc["params"], paramsJson);
+    } else {
+        paramsJson = "{}";
+    }
+    
+    return true;
+}
+
+
 std::string AnimationManager::getAllPresetsJson() const {
     DynamicJsonDocument doc(4096);
     JsonArray arr = doc.to<JsonArray>();

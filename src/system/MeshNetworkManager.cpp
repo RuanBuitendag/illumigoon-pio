@@ -63,6 +63,10 @@ void MeshNetworkManager::begin() {
     lastHeartbeatTime = millis();
     
     Serial.println("Mesh network initialized, listening for master...");
+    
+    // Request sync on startup (after a short delay to allow connections to stabilize)
+    // We can't delay here, so just send it.
+    broadcastRequestSyncPresets();
 }
 
 void MeshNetworkManager::update() {
@@ -142,6 +146,65 @@ void MeshNetworkManager::update() {
     if (pendingPowerSync.pending) {
         doSendSyncPower(pendingPowerSync.powerOn);
         pendingPowerSync.pending = false;
+    }
+
+
+    // Periodic Sync Request (every 60 seconds)
+    static unsigned long lastSyncRequest = 0;
+    if (now - lastSyncRequest > 10000) {
+        broadcastRequestSyncPresets();
+        lastSyncRequest = now;
+    }
+    
+    // Process manifest queue (non-blocking, one per cycle)
+    if (manifestQueue.active && !manifestQueue.names.empty() && now >= manifestQueue.nextSendTime) {
+        std::string name = manifestQueue.names.back();
+        manifestQueue.names.pop_back();
+        
+        MeshMessage response;
+        response.type = MessageType::PRESET_MANIFEST;
+        response.senderId = myId;
+        response.sequenceNumber = sequenceNumber++;
+        response.totalPackets = 1;
+        response.packetIndex = 0;
+        
+        strncpy((char*)response.data, name.c_str(), 229);
+        response.data[229] = '\0';
+        response.dataLength = strlen((char*)response.data) + 1;
+        
+        sendMessage(response);
+        
+        // Schedule next send with 100ms spacing
+        manifestQueue.nextSendTime = now + 100;
+        
+        if (manifestQueue.names.empty()) {
+            manifestQueue.active = false;
+            Serial.println("Mesh: Manifest queue complete");
+        }
+    }
+    
+    // Process data request queue (non-blocking, one per cycle)
+    if (!dataRequestQueue.requests.empty() && now >= dataRequestQueue.nextSendTime) {
+        auto req = dataRequestQueue.requests.back();
+        dataRequestQueue.requests.pop_back();
+        
+        MeshMessage msg;
+        msg.type = MessageType::REQUEST_PRESET_DATA;
+        msg.senderId = myId;
+        msg.sequenceNumber = sequenceNumber++;
+        msg.totalPackets = 1;
+        msg.packetIndex = 0;
+        
+        memcpy(msg.data, &req.targetId, sizeof(uint64_t));
+        strncpy((char*)msg.data + sizeof(uint64_t), req.name.c_str(), 229 - sizeof(uint64_t));
+        ((char*)msg.data)[229] = '\0';
+        msg.dataLength = sizeof(uint64_t) + strlen(req.name.c_str()) + 1;
+        
+        sendMessage(msg);
+        Serial.printf("Mesh: Sent data request for '%s'\r\n", req.name.c_str());
+        
+        // Schedule next request with 500ms spacing (allow time for response)
+        dataRequestQueue.nextSendTime = now + 500;
     }
 }
 
@@ -241,6 +304,9 @@ void MeshNetworkManager::onReceive(const uint8_t* mac, const uint8_t* data, int 
             case MessageType::ASSIGN_GROUP: Serial.print("ASSIGN_GROUP"); break;
             case MessageType::SYNC_PARAM: Serial.print("SYNC_PARAM"); break;
             case MessageType::SYNC_POWER: Serial.print("SYNC_POWER"); break;
+            case MessageType::REQUEST_SYNC_PRESETS: Serial.print("REQUEST_SYNC_PRESETS"); break;
+            case MessageType::PRESET_MANIFEST: Serial.print("PRESET_MANIFEST"); break;
+            case MessageType::REQUEST_PRESET_DATA: Serial.print("REQUEST_PRESET_DATA"); break;
             default: Serial.print("UNKNOWN"); break;
         }
         Serial.print(" from ");
@@ -314,6 +380,18 @@ void MeshNetworkManager::onReceive(const uint8_t* mac, const uint8_t* data, int 
 
         case MessageType::SYNC_POWER:
             handleSyncPower(msg);
+            break;
+
+        case MessageType::REQUEST_SYNC_PRESETS:
+            handleRequestSyncPresets(msg);
+            break;
+
+        case MessageType::PRESET_MANIFEST:
+            handlePresetManifest(msg);
+            break;
+
+        case MessageType::REQUEST_PRESET_DATA:
+            handleRequestPresetData(msg);
             break;
 
         default:
@@ -798,7 +876,126 @@ void MeshNetworkManager::handleSavePreset(const MeshMessage& msg) {
         }
         
         // Reset
+
+        // Important: If we just saved a preset that we requested, we might want to reload or notify?
+        // simple loadPresets() is called inside savePresetFromData.
+        
         presetBuffer.sequenceNumber = 0; 
+    }
+}
+
+// ==========================================
+// SYNC LOGIC
+// ==========================================
+
+void MeshNetworkManager::broadcastRequestSyncPresets() {
+    MeshMessage msg;
+    msg.type = MessageType::REQUEST_SYNC_PRESETS;
+    msg.senderId = myId;
+    msg.sequenceNumber = sequenceNumber++;
+    msg.totalPackets = 1;
+    msg.packetIndex = 0;
+    msg.dataLength = 0;
+    
+    sendMessage(msg);
+    Serial.println("Mesh: Requested Preset Sync");
+}
+
+void MeshNetworkManager::handleRequestSyncPresets(const MeshMessage& msg) {
+    if (!animManager) return;
+    
+    // Queue all preset names for sending (non-blocking)
+    std::vector<std::string> names = animManager->getPresetNames();
+    
+    if (names.empty()) return;
+    
+    Serial.printf("Mesh: Queueing %d presets for manifest broadcast\r\n", names.size());
+    
+    // Add to queue
+    for (const auto& name : names) {
+        manifestQueue.names.push_back(name);
+    }
+    
+    // Schedule first send with random delay to avoid collision
+    unsigned long delayTime = random(100, 800);
+    manifestQueue.nextSendTime = millis() + delayTime;
+    manifestQueue.active = true;
+}
+
+void MeshNetworkManager::handlePresetManifest(const MeshMessage& msg) {
+    if (!animManager) return;
+    
+    char name[230];
+    memcpy(name, msg.data, msg.dataLength);
+    name[229] = '\0';
+    
+    // Check if we have this preset
+    if (!animManager->exists(name)) {
+        // Check duplication
+        unsigned long now = millis();
+        bool alreadyRequested = false;
+        
+        // Clean up old requests and check for duplicates
+        for (auto it = requestedPresets.begin(); it != requestedPresets.end(); ) {
+            if (now - it->requestTime > 30000) {
+                it = requestedPresets.erase(it); // expire old (30s timeout)
+            } else {
+                if (it->name == name) {
+                    alreadyRequested = true;
+                }
+                ++it;
+            }
+        }
+        
+        // Also check if already in the request queue
+        for (const auto& req : dataRequestQueue.requests) {
+            if (req.name == name) {
+                alreadyRequested = true;
+                break;
+            }
+        }
+
+        if (!alreadyRequested) {
+            Serial.printf("Mesh: Missing preset '%s', queuing request to %016llX\r\n", name, msg.senderId);
+            requestedPresets.push_back({name, now});
+            
+            // Queue the request instead of sending immediately
+            dataRequestQueue.requests.push_back({name, msg.senderId});
+        }
+    }
+}
+
+void MeshNetworkManager::broadcastRequestPresetData(const std::string& name, uint64_t targetId) {
+    // This is now just a helper to queue a request
+    dataRequestQueue.requests.push_back({name, targetId});
+}
+
+void MeshNetworkManager::handleRequestPresetData(const MeshMessage& msg) {
+    if (!animManager) return;
+    
+    if (msg.dataLength < sizeof(uint64_t)) return;
+    
+    uint64_t targetId;
+    memcpy(&targetId, msg.data, sizeof(uint64_t));
+    
+    if (targetId != myId) {
+        // Not for us
+        return;
+    }
+
+    char name[230];
+    strncpy(name, (char*)msg.data + sizeof(uint64_t), 229 - sizeof(uint64_t));
+    name[229] = '\0';
+    
+    Serial.printf("Mesh: Request for preset data '%s' received (Directed)\r\n", name);
+    
+    std::string baseType;
+    std::string paramsJson;
+    
+    if (animManager->getPresetData(name, baseType, paramsJson)) {
+        broadcastSavePreset(name, baseType, paramsJson);
+    } else {
+        Serial.printf("Mesh: Requested preset '%s' not found locally!\r\n", name);
     }
 }
 

@@ -1,6 +1,7 @@
 #include "system/WifiManager.h"
 #include <HardwareSerial.h>
 #include <ESPmDNS.h>
+#include <esp_wifi.h>
 
 WiFiManager::WiFiManager(const char* ssid, const char* password)
     : ssid(ssid), password(password), connecting(false), mdnsStarted(false) {}
@@ -8,6 +9,7 @@ WiFiManager::WiFiManager(const char* ssid, const char* password)
 void WiFiManager::begin() {
     Serial.print("Connecting to WiFi");
     WiFi.mode(WIFI_STA);
+    esp_wifi_set_ps(WIFI_PS_NONE); // Disable power save for reliable ESP-NOW
     WiFi.disconnect();
     WiFi.begin(ssid, password);
 }
