@@ -443,6 +443,14 @@ void WebManager::handleWebSocketMessage(AsyncWebSocketClient *client, void *arg,
                  // Let's just broadcast peers immediately, though the remote might not have updated yet.
              }
         }
+        else if (strcmp(cmd, "renameDevice") == 0) {
+             const char* name = doc["name"];
+             if (name) {
+                 meshManager.setDeviceName(name);
+                 // Broadcast updated peers list to all connected clients
+                 ws.textAll("{\"event\":\"peers\", \"data\":" + getPeersJson() + "}");
+             }
+        }
     }
 }
 
@@ -542,6 +550,7 @@ String WebManager::getPeersJson() {
     self["ip"] = WiFi.localIP().toString();
     self["role"] = meshManager.isMaster() ? "MASTER" : "SLAVE";
     self["group"] = meshManager.getGroupName();
+    self["name"] = meshManager.getDeviceName();
     self["self"] = true;
 
     // Mesh Peers
@@ -554,6 +563,7 @@ String WebManager::getPeersJson() {
         obj["ip"] = IPAddress(peer.ip).toString();
         obj["role"] = (peer.role == NodeState::MASTER) ? "MASTER" : "SLAVE";
         obj["group"] = peer.groupName;
+        obj["name"] = peer.deviceName;
         obj["lastSeen"] = peer.lastSeen;
         obj["self"] = false;
     }

@@ -72,8 +72,9 @@ void SystemManager::update() {
     ota.update();
     web.update();
     
-    // Check for config changes
-    if (mesh.getGroupName() != lastSavedGroupName) {
+    // Check for config changes (group or device name)
+    if (mesh.getGroupName() != lastSavedGroupName || 
+        mesh.getDeviceName() != lastSavedDeviceName) {
         saveConfig();
     }
     
@@ -151,11 +152,19 @@ void SystemManager::loadConfig() {
         lastSavedGroupName = group;
         Serial.printf("Config: Loaded group '%s'\n", group.c_str());
     }
+
+    if (doc.containsKey("deviceName")) {
+        std::string name = doc["deviceName"].as<const char*>();
+        mesh.setDeviceName(name);
+        lastSavedDeviceName = name;
+        Serial.printf("Config: Loaded device name '%s'\n", name.c_str());
+    }
 }
 
 void SystemManager::saveConfig() {
     StaticJsonDocument<512> doc;
     doc["group"] = mesh.getGroupName();
+    doc["deviceName"] = mesh.getDeviceName();
 
     File file = LittleFS.open("/config.json", "w");
     if (!file) {
@@ -167,5 +176,6 @@ void SystemManager::saveConfig() {
     file.close();
     
     lastSavedGroupName = mesh.getGroupName();
+    lastSavedDeviceName = mesh.getDeviceName();
     Serial.println("Config: Saved configuration");
 }

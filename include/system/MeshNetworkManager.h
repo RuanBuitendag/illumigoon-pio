@@ -55,14 +55,16 @@ struct __attribute__((packed)) MeshMessage {
 struct __attribute__((packed)) PeerAnnouncementPayload {
     uint32_t ip;
     NodeState role;
-    char groupName[32]; // New
+    char groupName[32];
+    char deviceName[32];
 };
 
 struct PeerInfo {
     uint64_t id;
     uint32_t ip;
     NodeState role;
-    std::string groupName; // New
+    std::string groupName;
+    std::string deviceName;
     unsigned long lastSeen;
 };
 
@@ -105,6 +107,10 @@ public:
     void broadcastAssignGroup(uint64_t targetId, const char* newGroupName);
     std::string getGroupName() const { return myGroupName; }
     void setGroupName(const std::string& name); // Persist logic will be in SystemManager
+    
+    // Device Name
+    std::string getDeviceName() const { return myDeviceName; }
+    void setDeviceName(const std::string& name);
     
     bool isMaster() const;
     bool isSlave() const;
@@ -204,6 +210,7 @@ private:
     PendingPowerSync pendingPowerSync;
 
     std::string myGroupName;
+    std::string myDeviceName;
     
     // Track requested presets to avoid spamming requests
     struct RequestTracker {

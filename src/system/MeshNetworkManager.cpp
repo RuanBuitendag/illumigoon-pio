@@ -608,6 +608,8 @@ void MeshNetworkManager::sendPeerAnnouncement() {
     payload.role = currentState;
     strncpy(payload.groupName, myGroupName.c_str(), 31);
     payload.groupName[31] = '\0';
+    strncpy(payload.deviceName, myDeviceName.c_str(), 31);
+    payload.deviceName[31] = '\0';
 
     memcpy(msg.data, &payload, sizeof(PeerAnnouncementPayload));
     msg.dataLength = sizeof(PeerAnnouncementPayload);
@@ -627,6 +629,7 @@ void MeshNetworkManager::handlePeerAnnouncement(const MeshMessage& msg) {
             peer.ip = payload->ip;
             peer.role = payload->role;
             peer.groupName = payload->groupName;
+            peer.deviceName = payload->deviceName;
             peer.lastSeen = millis();
             found = true;
             break;
@@ -634,8 +637,8 @@ void MeshNetworkManager::handlePeerAnnouncement(const MeshMessage& msg) {
     }
     
     if (!found) {
-        knownPeers.push_back({msg.senderId, payload->ip, payload->role, payload->groupName, millis()});
-        Serial.printf("New Peer Discovered: %016llX at IP %u, Group: %s\r\n", msg.senderId, payload->ip, payload->groupName);
+        knownPeers.push_back({msg.senderId, payload->ip, payload->role, payload->groupName, payload->deviceName, millis()});
+        Serial.printf("New Peer Discovered: %016llX at IP %u, Name: %s, Group: %s\r\n", msg.senderId, payload->ip, payload->deviceName, payload->groupName);
     }
 }
 
@@ -1081,8 +1084,28 @@ void MeshNetworkManager::setGroupName(const std::string& name) {
     }
 }
 
+void MeshNetworkManager::setDeviceName(const std::string& name) {
+    if (myDeviceName != name) {
+        Serial.printf("Mesh: Device name changed from '%s' to '%s'\r\n", myDeviceName.c_str(), name.c_str());
+        myDeviceName = name;
+        // Trigger announcement immediately so others know
+        sendPeerAnnouncement();
+    }
+}
+
 void MeshNetworkManager::broadcastAssignGroup(uint64_t targetId, const char* newGroupName) {
     Serial.printf("Mesh: Queuing ASSIGN_GROUP for %016llX -> '%s'\r\n", targetId, newGroupName);
+    
+    // Immediately update local knownPeers cache so getPeers() returns updated data
+    // This prevents the UI from snapping back when fetchPeers() is called before mesh propagates
+    for (auto& peer : knownPeers) {
+        if (peer.id == targetId) {
+            peer.groupName = newGroupName;
+            Serial.printf("Mesh: Updated local cache for peer %016llX -> group '%s'\r\n", targetId, newGroupName);
+            break;
+        }
+    }
+    
     pendingGroupAssignment.targetId = targetId;
     pendingGroupAssignment.groupName = newGroupName;
     pendingGroupAssignment.pending = true;

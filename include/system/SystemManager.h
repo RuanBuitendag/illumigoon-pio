@@ -42,6 +42,7 @@ private:
     void loadConfig();
     void saveConfig();
     std::string lastSavedGroupName;
+    std::string lastSavedDeviceName;
 
 public:
 };
